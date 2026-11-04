@@ -55,7 +55,9 @@ client_secret and account-bearing `request_log_url`s shipped to the public
 repo in PR #1, where the PR review agent blocked on them. Remediation:
 the sandbox PaymentIntents were cancelled (neutralizing the secrets — a
 history rewrite would not purge `refs/pull/1/head`), and scrubbing moved to
-write time in `compatlab/redact.py`, the seed of the RC1-606 component. The
+write time in `compatlab/redact.py`, the seed of the RC1-606 component
+(now `compatlab/redaction/`, see ADR 0002 — including the hole its
+independent scanner found in Phase 1's own capture path). The
 epic's zero-PII-scan requirement stopped being a formality the day the first
 corpus existed.
 

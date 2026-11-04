@@ -1,0 +1,42 @@
+{
+  "workflow": "pagination_and_errors",
+  "description": "List pagination boundaries and error semantics: the axes with no object graph behind them.",
+  "targets": [],
+  "note": "No M targets by design. This workflow covers the behavioral axes the epic names that are not tied to a documented break: pagination boundaries, ordering, and error bodies under an unchanged HTTP status. Two steps are live evidence from the Phase 0 spike: total_count is account-gated (400 on both versions, different bodies) and the amount_off + forever coupon restriction was reversed upstream in clover. Both stay in the corpus because a corpus that only contains what the changelog promised would flatter the differ.",
+  "steps": [
+    {
+      "step": "list_customers_first_page",
+      "method": "GET",
+      "path": "/v1/customers?limit=2"
+    },
+    {
+      "step": "list_customers_second_page",
+      "method": "GET",
+      "path": "/v1/customers?limit=2&starting_after={{list_customers_first_page.data.1.id}}",
+      "note": "Cursor taken from the first page, so a changed sort order or boundary shows as a different second page."
+    },
+    {
+      "step": "list_customers_total_count",
+      "method": "GET",
+      "path": "/v1/customers?limit=2&expand[]=total_count",
+      "note": "Account-gated: 400 on both versions from a fresh sandbox, with different error bodies."
+    },
+    {
+      "step": "retrieve_missing_customer",
+      "method": "GET",
+      "path": "/v1/customers/cus_MISSING000000"
+    },
+    {
+      "step": "create_invalid_payment_intent",
+      "method": "POST",
+      "path": "/v1/payment_intents",
+      "body": {"amount": "-100", "currency": "usd"}
+    },
+    {
+      "step": "create_coupon_amount_off_forever",
+      "method": "POST",
+      "path": "/v1/coupons",
+      "body": {"amount_off": "500", "currency": "usd", "duration": "forever"}
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "workflow": "checkout_card_payment",
+  "description": "One-off card payment: customer, payment method, intent, confirm, refund.",
+  "targets": ["M1", "M2"],
+  "note": "The bare create_payment_intent step (amount + currency only) is where both PaymentIntent default changes show: automatic_payment_methods (2023-08-16) and capture_method automatic_async (2024-04-10). The refund step depends on that default, which is the point: a changed default two versions back reaches all the way to whether a refund succeeds.",
+  "steps": [
+    {
+      "step": "create_customer",
+      "method": "POST",
+      "path": "/v1/customers",
+      "body": {
+        "email": "ada.lovelace@example.com",
+        "name": "Ada Lovelace",
+        "phone": "+14155550123",
+        "address[line1]": "1 Analytical Engine Way",
+        "address[city]": "San Francisco",
+        "address[state]": "CA",
+        "address[postal_code]": "94105",
+        "address[country]": "US",
+        "description": "compatlab capture fixture"
+      },
+      "note": "Fictional, but shaped like real customer data so redaction is exercised on every field type."
+    },
+    {
+      "step": "create_payment_method",
+      "method": "POST",
+      "path": "/v1/payment_methods",
+      "body": {
+        "type": "card",
+        "card[token]": "tok_visa",
+        "billing_details[email]": "ada.lovelace@example.com",
+        "billing_details[name]": "Ada Lovelace",
+        "billing_details[phone]": "+14155550123",
+        "billing_details[address][line1]": "1 Analytical Engine Way",
+        "billing_details[address][postal_code]": "94105",
+        "billing_details[address][country]": "US"
+      }
+    },
+    {
+      "step": "attach_payment_method",
+      "method": "POST",
+      "path": "/v1/payment_methods/{{create_payment_method.id}}/attach",
+      "body": {"customer": "{{create_customer.id}}"}
+    },
+    {
+      "step": "create_payment_intent",
+      "method": "POST",
+      "path": "/v1/payment_intents",
+      "body": {
+        "amount": "1099",
+        "currency": "usd",
+        "customer": "{{create_customer.id}}",
+        "receipt_email": "ada.lovelace@example.com"
+      },
+      "note": "Deliberately minimal: every unspecified parameter is a default the new version is free to change."
+    },
+    {
+      "step": "confirm_payment_intent",
+      "method": "POST",
+      "path": "/v1/payment_intents/{{create_payment_intent.id}}/confirm",
+      "body": {
+        "payment_method": "{{create_payment_method.id}}",
+        "return_url": "https://example.invalid/checkout/return"
+      }
+    },
+    {
+      "step": "retrieve_payment_intent",
+      "method": "GET",
+      "path": "/v1/payment_intents/{{create_payment_intent.id}}"
+    },
+    {
+      "step": "refund_payment",
+      "method": "POST",
+      "path": "/v1/refunds",
+      "body": {"payment_intent": "{{create_payment_intent.id}}"},
+      "note": "Succeeds only if the charge is already captured, which depends on the capture_method default."
+    },
+    {
+      "step": "list_customer_charges",
+      "method": "GET",
+      "path": "/v1/charges?limit=2&customer={{create_customer.id}}"
+    }
+  ]
+}
