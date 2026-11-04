@@ -1,0 +1,16 @@
+# secrets — never commit; editor swap files have leaked these before
+.env
+.env.*
+!.env.example
+*.swp
+*.swo
+*~
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# os
+.DS_Store

@@ -1,0 +1,14 @@
+[project]
+name = "api-compatibility-lab"
+version = "0.1.0"
+description = "Replay sanitized API traffic across two API versions to find the behavioral breaks a schema diff misses"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
