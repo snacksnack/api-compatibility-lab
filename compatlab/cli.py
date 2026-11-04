@@ -1,12 +1,15 @@
-"""`compatlab capture | scan | coverage | control | replay | diff | baseline | score`.
+"""`compatlab capture|scan|coverage|control|replay|diff|baseline|score|impact`.
 
-Two of these matter to CI, and both exit non-zero on failure rather than
+Three of these matter to CI, and each exits non-zero on failure rather than
 printing a warning:
 
 - `scan` is the epic's scored requirement — zero PII findings on the stored
   corpus — run against the committed corpus on every push.
 - `score` refuses to publish a false-break rate while any breaking finding is
   unadjudicated, so a new finding cannot slip into the headline unexamined.
+- `impact` refuses to publish a workflow-mapping precision while any claim is
+  unconfirmed against the replay record, and fails outright on an integration
+  inventory that does not match the captured traffic.
 
 `baseline` is the odd one out: it needs the network and a container runtime,
 so it is run by hand and its output committed. Everything else works offline
@@ -23,17 +26,21 @@ import sys
 import httpx
 from dotenv import dotenv_values
 
-from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B, scoring
+from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B, impact, scoring
 from compatlab import baseline as bl
+from compatlab import workflows as wf
 from compatlab.canonical import canonical_side, diff_paths
 from compatlab.capture import capture_all, seed_known
 from compatlab.corpus import files, read, validate, write
 from compatlab.coverage import GROUND_TRUTH_M, render, summarize
-from compatlab.differ import diff_pairs
-from compatlab.findings import SEVERITIES
+from compatlab.differ import diff_pairs, sides
+from compatlab.findings import SEVERITIES, Finding
+from compatlab.impact_html import render_html
+from compatlab.impact_report import render as render_impact
 from compatlab.redaction import STRIPE_POLICY, Policy
 from compatlab.replay import pair, replay_corpus
 from compatlab.scenarios import SCENARIO_DIR, load_all
+from compatlab.verify import ground_truth_coverage, verify
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT / "corpus"
@@ -44,6 +51,10 @@ BASELINE_PATH = ROOT / bl.INDEX_PATH
 ADJUDICATION_PATH = ROOT / scoring.ADJUDICATION_PATH
 SPEC_CACHE = ROOT / ".cache" / "specs"
 REPORT_PATH = ROOT / "docs" / "behavioral-diff-report.md"
+WORKFLOW_DIR = ROOT / "workflows"
+PINS_PATH = ROOT / "pins" / "pins.jsonl"
+IMPACT_PATH = ROOT / "docs" / "impact-report.md"
+IMPACT_HTML_PATH = ROOT / "docs" / "impact-report.html"
 
 
 def _slug(version: str) -> str:
@@ -363,6 +374,111 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _findings_from(path: pathlib.Path) -> list[Finding]:
+    """Read the committed findings file back into Finding objects.
+
+    Phase 4 reads `findings/findings.jsonl` rather than re-running the differ,
+    because the impact report has to be about the findings that were scored
+    and adjudicated. Re-deriving them here would let the two reports drift.
+    """
+    out = []
+    with path.open() as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            raw = json.loads(line)
+            raw.pop("key", None)
+            raw["targets"] = tuple(raw.get("targets") or ())
+            out.append(Finding(**raw))
+    return out
+
+
+def cmd_impact(args: argparse.Namespace) -> int:
+    """Map findings onto the integration inventory. The heart of Phase 4."""
+    pairs = _read_pairs(pathlib.Path(args.pairs))
+    findings = _findings_from(pathlib.Path(args.findings))
+    side_a, side_b = sides(pairs)
+    canon_a, canon_b = canonical_side(side_a), canonical_side(side_b)
+    seqs = {(p["workflow"], p["step"]): p["seq"] for p in pairs}
+
+    try:
+        declared = wf.load_all(pathlib.Path(args.workflows))
+    except wf.DeclarationError as exc:
+        sys.exit(f"integration inventory: {exc}")
+    if not declared:
+        sys.exit(f"no workflow declarations in {args.workflows}")
+
+    validation = wf.validate(declared, canon_a, seqs)
+    print(f"inventory: {len(declared)} workflow(s), "
+          f"{validation.steps_checked} declared call(s), "
+          f"{validation.reads_checked} declared read(s)")
+    for problem in validation.problems:
+        print(f"  invalid: {problem}")
+    if not validation.ok:
+        print(f"FAIL: {len(validation.problems)} problem(s); the inventory "
+              f"does not describe the captured traffic, so no claim made from "
+              f"it would mean anything.")
+        return 1
+
+    report = impact.map_findings(declared, findings, version_a=VERSION_A,
+                                 version_b=VERSION_B)
+    verification = verify(report, pairs, canon_a, canon_b)
+    # The regression guard: the breaks Phase 3 caught, and which findings
+    # evidence each one, so the report can show that the mapping still
+    # reaches them. Read from the same ground-truth inventory `score` uses.
+    diff_report = diff_pairs(pairs)
+    caught, evidence_keys = [], {}
+    for item in scoring.GROUND_TRUTH:
+        found = scoring.evidence(diff_report, item)
+        evidence_keys[item.id] = {f.key for f in found}
+        if found:
+            caught.append({"id": item.id, "summary": item.summary})
+    verification.coverage = ground_truth_coverage(report, caught, evidence_keys)
+    pin_list = impact.pins(report)
+
+    if args.json:
+        print(json.dumps({
+            **report.to_dict(),
+            "verification": verification.to_dict(),
+            "pins": pin_list,
+        }, indent=2))
+    else:
+        print()
+        print(render_impact(report, verification, pin_list))
+
+    out = pathlib.Path(args.pins)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w") as handle:
+        for pin in pin_list:
+            handle.write(json.dumps(pin, sort_keys=True) + "\n")
+    print(f"\nwrote {len(pin_list)} pin(s) to {out}")
+
+    if args.out:
+        pathlib.Path(args.out).write_text(
+            render_impact(report, verification, pin_list) + "\n")
+        print(f"wrote {args.out}")
+    if args.html:
+        pathlib.Path(args.html).write_text(
+            render_html(report, verification, pin_list))
+        print(f"wrote {args.html}")
+
+    leaks = _scan_records([p for p in pin_list], "pins", seeded_policy())
+    if leaks:
+        print(f"REFUSING to stop here: {len(leaks)} finding(s) in the pin "
+              f"file — a sanitized corpus produced unsanitized pins.")
+        for leak in leaks[:20]:
+            print(f"  {leak}")
+        return 1
+
+    if not verification.ok:
+        print(f"\nFAIL: {len(verification.unconfirmed)} impact claim(s) could "
+              f"not be confirmed against the replay record; the "
+              f"workflow-mapping precision is not publishable while any claim "
+              f"is unverified.")
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="compatlab", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -416,6 +532,18 @@ def build_parser() -> argparse.ArgumentParser:
                      help="also write the markdown report")
     sco.add_argument("--json", action="store_true")
     sco.set_defaults(func=cmd_score)
+
+    imp = sub.add_parser("impact", help="map findings onto customer workflows")
+    imp.add_argument("--pairs", default=str(PAIRS_PATH))
+    imp.add_argument("--findings", default=str(FINDINGS_PATH))
+    imp.add_argument("--workflows", default=str(WORKFLOW_DIR))
+    imp.add_argument("--pins", default=str(PINS_PATH))
+    imp.add_argument("--out", nargs="?", const=str(IMPACT_PATH),
+                     help="also write the markdown report")
+    imp.add_argument("--html", nargs="?", const=str(IMPACT_HTML_PATH),
+                     help="also write the self-contained HTML report")
+    imp.add_argument("--json", action="store_true")
+    imp.set_defaults(func=cmd_impact)
 
     cov = sub.add_parser("coverage", help="per-endpoint coverage stats")
     cov.add_argument("path", nargs="?")

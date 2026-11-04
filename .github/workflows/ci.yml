@@ -61,3 +61,11 @@ jobs:
       # runs oasdiff or touches Stripe.
       - name: Score the differ against ground truth
         run: uv run python -m compatlab score
+
+      # The Phase 4 gate, same shape. It fails on an integration inventory
+      # that no longer matches the captured traffic (a stale declared read is
+      # the normal way this input goes wrong), and it refuses to publish a
+      # workflow-mapping precision while any impact claim is unconfirmed
+      # against the replay record. Also offline.
+      - name: Map findings onto customer workflows
+        run: uv run python -m compatlab impact

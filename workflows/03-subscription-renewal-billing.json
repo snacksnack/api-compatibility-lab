@@ -1,0 +1,78 @@
+{
+  "workflow": "subscription_renewal_billing",
+  "purpose": "Provisions a subscription, schedules the renewal notice and the dunning sequence, and writes the access-until date on cancellation.",
+  "criticality": "high",
+  "owner": "Billing",
+  "sequence": [
+    {
+      "corpus": "subscription_billing.create_subscription",
+      "reads": [
+        {
+          "locus": "$.body.status",
+          "use": "decision",
+          "note": "entitlements are granted only for an `active` subscription"
+        },
+        {
+          "locus": "$.body.current_period_end",
+          "use": "record",
+          "note": "stored as the renewal date the notice job and the dunning scheduler both fire on"
+        },
+        {
+          "locus": "$.body.items.data[].price.id",
+          "use": "record",
+          "note": "the entitlement row keys off the price the customer is on"
+        }
+      ]
+    },
+    {
+      "corpus": "subscription_billing.list_subscription_invoices",
+      "reads": [
+        {
+          "locus": "$.body.data[].paid",
+          "use": "decision",
+          "note": "an unpaid invoice enters the dunning sequence"
+        },
+        {
+          "locus": "$.body.data[].payment_intent",
+          "use": "record",
+          "note": "stored so support can trace an invoice to the payment that settled it"
+        },
+        {
+          "locus": "$.body.data[].total",
+          "use": "record",
+          "note": "the invoiced amount shown on the customer's billing history"
+        }
+      ]
+    },
+    {
+      "corpus": "subscription_billing.preview_upcoming_by_subscription",
+      "reads": [
+        {
+          "locus": "$.body.amount_due",
+          "use": "decision",
+          "note": "the renewal notice is sent only when the next invoice is for more than zero"
+        },
+        {
+          "locus": "$.body.period_end",
+          "use": "display",
+          "note": "quoted in the renewal notice as the period the charge covers"
+        }
+      ]
+    },
+    {
+      "corpus": "subscription_billing.cancel_subscription",
+      "reads": [
+        {
+          "locus": "$.body.status",
+          "use": "decision",
+          "note": "entitlements are revoked once the subscription reads `canceled`"
+        },
+        {
+          "locus": "$.body.current_period_end",
+          "use": "record",
+          "note": "the access-until date written on cancellation; the customer keeps access to it"
+        }
+      ]
+    }
+  ]
+}
