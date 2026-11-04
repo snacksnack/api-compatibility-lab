@@ -69,6 +69,7 @@ class RawCall:
 class CaptureReport:
     records: list[dict] = field(default_factory=list)
     skipped: list[tuple[str, str]] = field(default_factory=list)
+    warnings: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def failures(self) -> list[dict]:

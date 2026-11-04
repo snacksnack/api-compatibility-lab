@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from compatlab.cli import main
+from compatlab.cli import _mismatches, main
 from compatlab.corpus import SCHEMA, write
 
 
@@ -64,3 +64,31 @@ def test_capture_rejects_an_unknown_scenario(capsys):
         assert "no such scenario: nope" in str(exit_code)
     else:
         raise AssertionError("expected SystemExit")
+
+
+def control_record(step: str, body: dict, seq: int = 0) -> dict:
+    rec = make_record(body, step=step)
+    rec["seq"] = seq
+    return rec
+
+
+def test_mismatches_is_empty_when_two_runs_differ_only_in_run_specific_values():
+    one = [control_record("create", {"id": "cus_AAAAAAAAAAAA",
+                                     "created": 1_793_800_000})]
+    two = [control_record("create", {"id": "cus_BBBBBBBBBBBB",
+                                     "created": 1_793_800_120})]
+    assert _mismatches(one, two) == {}
+
+
+def test_mismatches_reports_a_real_difference_per_step():
+    one = [control_record("create", {"capture_method": "automatic"})]
+    two = [control_record("create", {"capture_method": "automatic_async"})]
+    out = _mismatches(one, two)
+    assert list(out) == ["w.create"]
+    assert "capture_method" in out["w.create"][0]
+
+
+def test_mismatches_flags_a_step_present_on_only_one_side():
+    out = _mismatches([control_record("create", {})],
+                      [control_record("create", {}), control_record("extra", {}, 1)])
+    assert "present on only one side" in out["w.extra"][0]

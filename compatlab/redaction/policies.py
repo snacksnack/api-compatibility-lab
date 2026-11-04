@@ -35,6 +35,10 @@ CREDENTIALS = KeyRule(
     keys=frozenset({
         "client_secret", "secret", "password", "authorization", "auth",
         "request_log_url", "token", "api_key", "ephemeral_key",
+        # Account-bearing URLs with an embedded access token. Named
+        # explicitly rather than by a `_url` suffix, so `return_url` — whose
+        # value is behavioral signal, not data — survives.
+        "receipt_url", "hosted_invoice_url", "invoice_pdf",
     }),
     suffixes=("_secret", "_key", "_password"),
 )

@@ -19,6 +19,13 @@ corpus gate in CI asserts exactly that against the committed corpus.
 Value detectors run on strings only. Numeric fields are matched by key, which
 keeps a 10-digit Unix timestamp from being read as a phone number.
 
+A fourth mechanism decodes before it looks. Stripe's `receipt_url` carries
+the account id base64-encoded inside an opaque blob, so a detector reading the
+raw string sees nothing: the plain `acct_...` form was caught and the encoded
+copy of the same value was not. Encoded personal data is still personal data,
+so candidate base64 runs are decoded (at each of the three byte alignments,
+standard and url-safe) and the decoded text is re-run through the detectors.
+
 A third mechanism exists because the other two cannot cover one real case: a
 sensitive value the server echoed into free text under an innocuous key.
 Stripe composes an invoice line item's `description` from the product name, so
@@ -30,7 +37,9 @@ appear, with the same surrogate their keyed occurrence gets.
 
 from __future__ import annotations
 
+import base64
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -45,6 +54,10 @@ from compatlab.redaction.detectors import (
     is_surrogate,
     surrogate,
 )
+
+# A base64-ish run long enough to be worth decoding.
+ENCODED_RE = re.compile(r"[A-Za-z0-9_-]{20,}={0,2}")
+ENCODED_RULE = "encoded"
 
 DEFAULT_SALT_NAME = "COMPATLAB_REDACTION_SALT"
 PUBLIC_DEMO_SALT = b"compatlab-public-demo"
@@ -197,6 +210,7 @@ class Policy:
     def _in_string(self, text: str, path: str,
                    findings: list[Finding] | None) -> str:
         out = self._known_in_string(text, path, findings)
+        out = self._encoded_in_string(out, path, findings)
         for detector in self.detectors:
             for hit in detector.findall(out):
                 if hit in self.allow_values or is_surrogate(hit):
@@ -212,6 +226,42 @@ class Policy:
                 )
                 out = out.replace(hit, stand_in)
         return out
+
+    def _encoded_in_string(self, text: str, path: str,
+                           findings: list[Finding] | None) -> str:
+        out = text
+        for candidate in ENCODED_RE.findall(text):
+            if is_surrogate(candidate) or candidate in self.allow_values:
+                continue
+            detector = self._decodes_to_sensitive(candidate)
+            if detector is None:
+                continue
+            if findings is not None:
+                findings.append(Finding(
+                    path, f"{ENCODED_RULE}_{detector.name}", detector.kind,
+                    mask(candidate),
+                ))
+            out = out.replace(candidate, surrogate(self.salt, candidate))
+        return out
+
+    def _decodes_to_sensitive(self, candidate: str) -> Detector | None:
+        """The first detector that fires on any decoding of this run."""
+        for offset in range(3):
+            chunk = candidate[offset:]
+            chunk = chunk[: len(chunk) // 4 * 4]
+            if len(chunk) < 8:
+                continue
+            for decode in (base64.urlsafe_b64decode, base64.b64decode):
+                try:
+                    plain = decode(chunk).decode("latin-1")
+                except (ValueError, UnicodeDecodeError):
+                    continue
+                for detector in self.detectors:
+                    hits = [h for h in detector.findall(plain)
+                            if h not in self.allow_values]
+                    if hits:
+                        return detector
+        return None
 
     def _known_in_string(self, text: str, path: str,
                          findings: list[Finding] | None) -> str:

@@ -85,3 +85,21 @@ def test_no_known_fixture_value_appears_anywhere_in_the_corpus(path: pathlib.Pat
         if value in stored
     ]
     assert survivors == []
+
+
+PAIRS = pathlib.Path(__file__).resolve().parent.parent / "replay" / "pairs.jsonl"
+
+
+def test_the_paired_replay_output_carries_no_fixture_value():
+    """Pairs embed the side records, so this follows from the corpus gates.
+
+    Asserted anyway: `replay/pairs.jsonl` is a committed file outside
+    `corpus/`, and a derived artifact nobody checks is how the first leak got
+    out (ADR 0002 D3).
+    """
+    if not PAIRS.exists():
+        pytest.skip("no replay output committed")
+    stored = PAIRS.read_text()
+    survivors = [f"{where}: {key}" for where, key, value in fixture_values()
+                 if value in stored]
+    assert survivors == []

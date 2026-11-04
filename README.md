@@ -10,9 +10,10 @@ HTTP status, silent truncation, and undocumented enum values. Every one of
 those breaks real integration code while the schema diff reports green.
 Behavior, not schema, is the contract customers actually depend on.
 
-**Status: Phase 1 (RC1-606) — capture and redaction.** Traffic is captured and
-sanitized; replaying it against version B and diffing the results are Phase 2
-and Phase 3. Nothing here is a finished tool yet.
+**Status: Phase 2 (RC1-607) — dual replay.** Traffic is captured, sanitized,
+and replayed against both versions with run-specific noise canonicalized
+away. Classifying the differences and mapping them to affected workflows are
+Phase 3 and Phase 4. Nothing here is a finished tool yet.
 
 ## Ground truth
 
@@ -29,6 +30,8 @@ Stripe's own published OpenAPI snapshots at pinned commits.
   version pair, baseline, stack, and corpus-format decisions.
 - [`docs/adr/0002-redaction-and-corpus.md`](docs/adr/0002-redaction-and-corpus.md) —
   redaction actions, the independent scanner, and workflow-shaped capture.
+- [`docs/adr/0003-replay-and-canonicalization.md`](docs/adr/0003-replay-and-canonicalization.md) —
+  re-execution, id and timestamp normalization, and the A/A control.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.
@@ -40,6 +43,8 @@ cp .env.example .env            # add a test-mode sandbox key
 uv run compatlab capture        # live traffic -> corpus/version-a.jsonl
 uv run compatlab coverage       # per-endpoint and per-workflow stats
 uv run compatlab scan           # independent PII audit of the stored corpus
+uv run compatlab control        # A/A control: same version twice, must be silent
+uv run compatlab replay         # A/B replay -> paired responses for the differ
 ```
 
 `capture` runs the workflows in [`scenarios/`](scenarios) against version A,
@@ -47,6 +52,37 @@ in order, resolving each step's `{{step.field}}` references from the previous
 responses. 29 calls across four workflows today, three of them deliberate
 errors. It refuses to finish quietly: it scans what it just wrote and exits
 non-zero if anything survived.
+
+## Replay
+
+Replay drives from the corpus, not from the scenario files: what a customer
+hands over is captured traffic, not a hand-written description of their
+integration. And it re-executes rather than re-sends — `POST
+/v1/payment_intents/pi_OLD/capture` cannot be replayed verbatim, because
+`pi_OLD` belongs to the run that recorded it. Each side re-runs the workflow
+against its own version and resolves `{{step.field}}` references against its
+own responses.
+
+Two runs of the same workflow differ everywhere: fresh ids, later timestamps,
+a new request id each call. Canonicalization removes that class and nothing
+else — ids by the step that created them, timestamps bucketed by day relative
+to the run, named volatile fields tokenized. The gate on having drawn that
+line correctly is the **A/A control run**: replay one version against itself
+and anything still differing is noise the canonicalizer missed.
+
+```
+A/A control on 2022-11-15: 29 record(s)
+PASS: zero infrastructure-caused mismatches
+```
+
+Both `2022-11-15` and `2025-03-31.basil` controls are silent. The real A/B
+replay then differs on 16 of 29 steps, and all four live-confirmed
+ground-truth breaks are visible in it — including `capture_method` going
+`automatic` to `automatic_async`, and a partial capture that produced a
+3,000-cent refund on the old version and none on the new one while the schema
+stayed identical. Details in
+[ADR 0003](docs/adr/0003-replay-and-canonicalization.md), including what a
+control run does *not* prove.
 
 ## Sanitization
 
