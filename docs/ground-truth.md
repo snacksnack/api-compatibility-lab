@@ -68,7 +68,7 @@ No exercisable behavioral entries.
 | 2 | Invoicing objects gain `parent` provenance field *(title-only)* | Invoice | SCHEMA |
 | 3 | `shipping_details` moved to `collected_information.shipping_details` | Checkout Session | SCHEMA |
 | 4 | Checkout Sessions: subscriptions created only after completed payment; no invoice until `complete`; sessions editable after failed attempt. No schema change | Checkout Session, Subscription, Invoice | BEHAVIORAL |
-| 5 | Coupons without a specified end time removed *(title-only)* | Coupon | BEHAVIORAL |
+| 5 | `amount_off` coupons with `duration: forever` rejected at creation and application (`percent_off` unaffected). Reversed upstream in 2026-01-28.clover; live API accepts again | Coupon | BEHAVIORAL (reversed) |
 | 6 | Singular `coupon`/`promotion_code` params removed for stackable `discounts` *(title-only)* | Billing | SCHEMA |
 | 7 | `GET /v1/invoices/upcoming` removed; preview now requires subscription context (previews across all subscriptions no longer possible) | Invoice | BOTH |
 | 8 | Legacy usage-based billing removed *(title-only)* | Billing | SCHEMA (provisional) |
@@ -82,29 +82,35 @@ No exercisable behavioral entries.
 | 16 | Manual capture removed for Interac *(title-only)* | Terminal | BOTH |
 | 17 | Naver Pay fields immutable after creation *(title-only)* | PaymentMethod | BEHAVIORAL |
 | 18 | Partial capture/cancel no longer creates a Refund *(title-only)* | PaymentIntent, Refund | BEHAVIORAL |
-| 19 | `total_count` expansion removed from all list endpoints | All list APIs | BEHAVIORAL |
+| 19 | `total_count` expansion removed; 400 `property_forbidden`. Docs: "New users can't expand `total_count` on earlier Stripe versions" — account-gated for new accounts | All list APIs | BEHAVIORAL (account-gated) |
 | 20 | New error codes for required verifications *(title-only)* | Account | BEHAVIORAL |
 | 21 | Default Payment Element layout changed *(title-only)* | Payment Element (client-side) | BEHAVIORAL |
 | 22 | Person `political_exposure` string -> enum *(title-only)* | Person | SCHEMA |
 
-## M: behavioral breaks in scope (provisional)
+## M: behavioral breaks in scope (provisional, spike-rescored)
 
-Exercisable from a bare test-mode sandbox, schema diff reports green:
+Exercisable from a bare test-mode sandbox, schema diff reports green. The
+spike (docs/spike-findings.md) live-verified entries where noted.
 
-| M# | Break | Version | Confidence |
-|----|-------|---------|------------|
-| 1 | Automatic payment methods default on PaymentIntent/SetupIntent | 2023-08-16 | high |
-| 2 | `capture_method` default `automatic_async` | 2024-04-10 | high |
-| 3 | `total_count` list expansion removed | basil | high |
-| 4 | Coupons without end time rejected | basil | high *(title-only)* |
-| 5 | Partial capture/cancel creates no Refund | basil | high *(title-only)* |
-| 6 | Invoice preview requires subscription context (behavioral half of basil #7) | basil | high |
-| 7 | Checkout Session create/complete semantics (observable: no invoice until `complete`) | basil | medium (full flow needs a completed session) |
-| 8 | Checkout no-cost orders | 2023-08-16 | medium *(title-only)* |
-| 9 | Statement descriptor auto-population | 2023-10-16 | medium (needs Connect test account) |
-| 10 | Partial invoice payment semantics | basil | medium *(title-only)* |
+| M# | Break | Version | Status |
+|----|-------|---------|--------|
+| 1 | Automatic payment methods default on PaymentIntent/SetupIntent | 2023-08-16 | **confirmed live** |
+| 2 | `capture_method` default `automatic_async` | 2024-04-10 | **confirmed live** |
+| 3 | Partial capture/cancel creates no Refund | basil | pending *(title-only)* |
+| 4 | Invoice preview requires subscription context (behavioral half of basil #7) | basil | pending |
+| 5 | Checkout Session create/complete semantics (observable: no invoice until `complete`) | basil | pending (full flow needs a completed session) |
+| 6 | Checkout no-cost orders | 2023-08-16 | pending *(title-only)* |
+| 7 | Statement descriptor auto-population | 2023-10-16 | pending (needs Connect test account) |
+| 8 | Partial invoice payment semantics | basil | pending *(title-only)* |
 
-**Provisional M = 10 (7 at high confidence).**
+**Provisional M = 8 (2 confirmed live, 6 pending exercise).**
+
+Disqualified by the spike (documented behavioral, but not scoreable here):
+
+- `total_count` expansion removal — account-gated: a fresh sandbox fails on
+  both versions, so there is no A/B diff to detect.
+- `amount_off` + `forever` coupon restriction — reversed upstream in
+  2026-01-28.clover; the live API no longer exhibits the break.
 
 Excluded from M (documented behavioral, not exercisable here): Issuing
 shipping-validation default, Issuing `expired` status, Issuing webhook Accept

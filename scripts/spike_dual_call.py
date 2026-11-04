@@ -33,9 +33,10 @@ CALLS = [
     # M3: total_count expansion removed in basil
     ("list_customers_total_count", "GET",
      "/v1/customers?limit=3&expand[]=total_count", None),
-    # M4: coupons without a specified end time rejected in basil
-    ("create_coupon_forever", "POST", "/v1/coupons",
-     {"percent_off": "10", "duration": "forever"}),
+    # M4: amount_off + duration=forever coupons rejected in basil
+    # (percent_off is unaffected; see docs/spike-findings.md)
+    ("create_coupon_amount_off_forever", "POST", "/v1/coupons",
+     {"amount_off": "500", "currency": "usd", "duration": "forever"}),
 ]
 
 

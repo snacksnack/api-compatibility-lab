@@ -35,10 +35,12 @@ Alternatives considered:
 - A = 2022-11-15, B = 2024-06-20: loses basil, the richest release. Rejected.
 
 Risk and required verification: a fresh sandbox must accept
-`Stripe-Version: 2022-11-15` per request. Stripe's versioning model supports
-old dated versions indefinitely, but this is verified by
-`scripts/spike_dual_call.py`, not assumed. If a new sandbox rejects pre-2024
-versions, fall back to acacia -> basil and rescore M.
+`Stripe-Version: 2022-11-15` per request. **Verified 2026-11-04** by
+`scripts/spike_dual_call.py`: a sandbox created the same day served both
+versions, confirmed via the `stripe-version` response header. The acacia ->
+basil fallback is retired. The spike surfaced a subtler risk instead: some
+documented breaks are account-gated or were reversed upstream, so ground
+truth must be live-verified per break (docs/spike-findings.md).
 
 ## D2. Ground truth and M
 
@@ -47,9 +49,10 @@ SCHEMA-VISIBLE / BEHAVIORAL / BOTH classification and an exercisability call.
 M counts documented behavioral breaks exercisable from a bare test-mode
 sandbox: Issuing, Terminal, Vault & Forward, and client-side (Payment Element)
 changes are excluded and listed as such, so the denominator is honest.
-Provisional M = 10 (7 high-confidence). Open Phase 0 work: entries sourced
-from changelog titles only are marked and need their detail pages read before
-scoring.
+Provisional M = 8 after spike rescoring: 2 confirmed live, 6 pending
+exercise; 2 former entries disqualified (one account-gated, one reversed
+upstream — see docs/spike-findings.md). Open Phase 0 work: remaining
+title-only entries need their detail pages read before scoring.
 
 ## D3. Schema-diff baseline: oasdiff over pinned stripe/openapi snapshots
 
