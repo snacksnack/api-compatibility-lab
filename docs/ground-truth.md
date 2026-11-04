@@ -70,7 +70,7 @@ No exercisable behavioral entries.
 | 4 | Checkout Sessions: subscriptions created only after completed payment; no invoice until `complete`; sessions editable after failed attempt. No schema change | Checkout Session, Subscription, Invoice | BEHAVIORAL |
 | 5 | `amount_off` coupons with `duration: forever` rejected at creation and application (`percent_off` unaffected). Reversed upstream in 2026-01-28.clover; live API accepts again | Coupon | BEHAVIORAL (reversed) |
 | 6 | Singular `coupon`/`promotion_code` params removed for stackable `discounts` *(title-only)* | Billing | SCHEMA |
-| 7 | `GET /v1/invoices/upcoming` removed; preview now requires subscription context (previews across all subscriptions no longer possible) | Invoice | BOTH |
+| 7 | `GET /v1/invoices/upcoming` removed outright — 404 `invalid_request_error` pointing at `POST /v1/invoices/create_preview`. **Live-verified in RC1-607:** the subscription-context form 404s too, so the changelog's "previews across all subscriptions no longer possible" understates it | Invoice | BOTH |
 | 8 | Legacy usage-based billing removed *(title-only)* | Billing | SCHEMA (provisional) |
 | 9 | InvoiceItem/InvoiceLineItem top-level price fields replaced by `pricing` | Invoice | SCHEMA |
 | 10 | Top-level tax properties replaced by `total_taxes`/`taxes` | Invoice, CreditNote | SCHEMA |
@@ -96,14 +96,19 @@ spike (docs/spike-findings.md) live-verified entries where noted.
 |----|-------|---------|--------|
 | 1 | Automatic payment methods default on PaymentIntent/SetupIntent | 2023-08-16 | **confirmed live** |
 | 2 | `capture_method` default `automatic_async` | 2024-04-10 | **confirmed live** |
-| 3 | Partial capture/cancel creates no Refund | basil | pending *(title-only)* |
-| 4 | Invoice preview requires subscription context (behavioral half of basil #7) | basil | pending |
+| 3 | Partial capture/cancel creates no Refund | basil | **confirmed live** |
+| 4 | `GET /v1/invoices/upcoming` removed outright (both call shapes 404) | basil | **confirmed live** |
 | 5 | Checkout Session create/complete semantics (observable: no invoice until `complete`) | basil | pending (full flow needs a completed session) |
 | 6 | Checkout no-cost orders | 2023-08-16 | pending *(title-only)* |
 | 7 | Statement descriptor auto-population | 2023-10-16 | pending (needs Connect test account) |
 | 8 | Partial invoice payment semantics | basil | pending *(title-only)* |
 
-**Provisional M = 8 (2 confirmed live, 6 pending exercise).**
+**Provisional M = 8 (4 confirmed live, 4 pending exercise).**
+
+M3 and M4 were confirmed by the RC1-607 dual replay: partial capture produced
+a 3,000-cent Refund on A and none on basil (`count: 1 -> 0`,
+`amount_refunded: 3000 -> 0`), and both invoice-preview call shapes went
+200 -> 404. M4's description was corrected in the process — see basil #7.
 
 Disqualified by the spike (documented behavioral, but not scoreable here):
 

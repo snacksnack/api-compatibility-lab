@@ -2,7 +2,7 @@
   "workflow": "subscription_billing",
   "description": "Recurring billing: product, price, subscriber with a default payment method, subscription, invoice preview.",
   "targets": ["M4"],
-  "note": "The two preview steps are the pair that matters. Previewing by customer alone is the form basil removed; previewing with subscription context is the form that survives. Same endpoint, same status family, different answer about whether an integration still works.",
+  "note": "The two preview steps are the pair that matters. Both 404 on basil: the endpoint was removed outright in favor of POST /v1/invoices/create_preview, not narrowed to require subscription context as the changelog implies. Live replay corrected the ground truth here.",
   "steps": [
     {
       "step": "create_product",
@@ -80,13 +80,13 @@
       "step": "preview_upcoming_by_customer",
       "method": "GET",
       "path": "/v1/invoices/upcoming?customer={{create_subscriber.id}}",
-      "note": "The removed form: a preview across all of a customer's subscriptions."
+      "note": "A preview across all of a customer's subscriptions, the form the changelog names."
     },
     {
       "step": "preview_upcoming_by_subscription",
       "method": "GET",
       "path": "/v1/invoices/upcoming?customer={{create_subscriber.id}}&subscription={{create_subscription.id}}",
-      "note": "The surviving form, captured alongside so the differ can tell removal from breakage."
+      "note": "Captured as the control for the removal: the changelog reads as though the subscription-context form survives, and the RC1-607 replay showed it 404s too. Kept because a pair that disproves the changelog is worth more than one that agrees with it."
     },
     {
       "step": "cancel_subscription",

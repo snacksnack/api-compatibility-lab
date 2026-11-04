@@ -15,16 +15,23 @@ import sys
 import httpx
 from dotenv import dotenv_values
 
-from compatlab import STRIPE_BASE_URL, VERSION_A
+from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B
+from compatlab.canonical import canonical_side, diff_paths
 from compatlab.capture import capture_all, seed_known
 from compatlab.corpus import files, read, validate, write
 from compatlab.coverage import GROUND_TRUTH_M, render, summarize
 from compatlab.redaction import STRIPE_POLICY, Policy
+from compatlab.replay import pair, replay_corpus
 from compatlab.scenarios import SCENARIO_DIR, load_all
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT / "corpus"
 DEFAULT_CORPUS = CORPUS_DIR / "version-a.jsonl"
+PAIRS_PATH = ROOT / "replay" / "pairs.jsonl"
+
+
+def _slug(version: str) -> str:
+    return version.replace(".", "-")
 
 
 def seeded_policy() -> Policy:
@@ -125,6 +132,91 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _report_run(report, label: str) -> None:
+    print(f"{label}: {len(report.records)} record(s), "
+          f"{len(report.failures)} non-2xx, {len(report.skipped)} skipped"
+          + (f", {len(report.warnings)} WARNING(S)" if report.warnings else ""))
+    for name, reason in report.skipped:
+        print(f"    skipped {name}: {reason}")
+    for name, reason in report.warnings:
+        print(f"    WARNING {name}: {reason}")
+
+
+def _mismatches(side_one: list[dict], side_two: list[dict]) -> dict[str, list[str]]:
+    """Canonicalize both runs and diff them step by step."""
+    one, two = canonical_side(side_one), canonical_side(side_two)
+    out = {}
+    for key in sorted(set(one) | set(two)):
+        name = f"{key[0]}.{key[1]}"
+        if key not in one or key not in two:
+            out[name] = [f"present on only one side ({'A' if key in one else 'B'})"]
+            continue
+        diffs = diff_paths(one[key], two[key])
+        if diffs:
+            out[name] = diffs
+    return out
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    records = read(pathlib.Path(args.corpus))
+    print(f"replaying {len(records)} record(s) from {args.corpus}")
+    with httpx.Client(base_url=STRIPE_BASE_URL, auth=(_stripe_key(), ""),
+                      timeout=30) as client:
+        side_a = replay_corpus(client, records, args.a, policy=STRIPE_POLICY)
+        _report_run(side_a, f"A {args.a}")
+        side_b = replay_corpus(client, records, args.b, policy=STRIPE_POLICY)
+        _report_run(side_b, f"B {args.b}")
+
+    for side, version in ((side_a, args.a), (side_b, args.b)):
+        out = CORPUS_DIR / f"replay-{_slug(version)}.jsonl"
+        write(out, side.records)
+        print(f"wrote {len(side.records)} records to {out}")
+
+    pairs = pair(side_a.records, side_b.records)
+    PAIRS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with PAIRS_PATH.open("w") as handle:
+        for item in pairs:
+            handle.write(json.dumps(item, sort_keys=True) + "\n")
+    unmatched = sum(1 for p in pairs if p["a"] is None or p["b"] is None)
+    print(f"wrote {len(pairs)} pairs to {PAIRS_PATH} ({unmatched} half-missing)")
+
+    findings = _scan_records(side_a.records + side_b.records, "replay",
+                             seeded_policy())
+    if findings:
+        print(f"REFUSING to stop here: {len(findings)} finding(s) in replayed "
+              f"traffic — a sanitized corpus produced unsanitized responses.")
+        for finding in findings[:20]:
+            print(f"  {finding}")
+        return 1
+    print("scan: clean")
+    return 0
+
+
+def cmd_control(args: argparse.Namespace) -> int:
+    """The A/A control: the same version on both sides must agree exactly."""
+    records = read(pathlib.Path(args.corpus))
+    print(f"A/A control on {args.version}: {len(records)} record(s)")
+    with httpx.Client(base_url=STRIPE_BASE_URL, auth=(_stripe_key(), ""),
+                      timeout=30) as client:
+        one = replay_corpus(client, records, args.version, policy=STRIPE_POLICY)
+        _report_run(one, "run 1")
+        two = replay_corpus(client, records, args.version, policy=STRIPE_POLICY)
+        _report_run(two, "run 2")
+
+    mismatches = _mismatches(one.records, two.records)
+    total = sum(len(v) for v in mismatches.values())
+    for name, diffs in mismatches.items():
+        print(f"  {name}: {len(diffs)} mismatch(es)")
+        for line in diffs[: args.show]:
+            print(f"      {line}")
+    if mismatches:
+        print(f"FAIL: {total} infrastructure-caused mismatch(es) across "
+              f"{len(mismatches)} step(s)")
+        return 1
+    print("PASS: zero infrastructure-caused mismatches")
+    return 0
+
+
 def cmd_coverage(args: argparse.Namespace) -> int:
     path = pathlib.Path(args.path or DEFAULT_CORPUS)
     records = [rec for p in files(path) for rec in read(p)]
@@ -150,6 +242,19 @@ def build_parser() -> argparse.ArgumentParser:
     scan = sub.add_parser("scan", help="audit a stored corpus for PII and secrets")
     scan.add_argument("path", nargs="*", help="corpus file or directory")
     scan.set_defaults(func=cmd_scan)
+
+    rep = sub.add_parser("replay", help="replay the corpus against two versions")
+    rep.add_argument("--corpus", default=str(DEFAULT_CORPUS))
+    rep.add_argument("--a", default=VERSION_A)
+    rep.add_argument("--b", default=VERSION_B)
+    rep.set_defaults(func=cmd_replay)
+
+    ctl = sub.add_parser("control", help="A/A control run: same version twice")
+    ctl.add_argument("--corpus", default=str(DEFAULT_CORPUS))
+    ctl.add_argument("--version", default=VERSION_A)
+    ctl.add_argument("--show", type=int, default=6,
+                     help="mismatch lines to print per step")
+    ctl.set_defaults(func=cmd_control)
 
     cov = sub.add_parser("coverage", help="per-endpoint coverage stats")
     cov.add_argument("path", nargs="?")
