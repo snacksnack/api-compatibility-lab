@@ -17,3 +17,8 @@ htmlcov/
 
 # os
 .DS_Store
+
+# fetched OpenAPI snapshots for the schema-diff baseline (~11 MB a pair,
+# pinned by SHA in ADR 0001 D3 and refetchable; the derived index is committed)
+.cache/
+.ruff_cache/

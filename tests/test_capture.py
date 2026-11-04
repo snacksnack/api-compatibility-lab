@@ -7,6 +7,7 @@ import pytest
 
 from compatlab.capture import (
     CaptureError,
+    RawCall,
     UnresolvedReference,
     capture_scenario,
     dig,
@@ -14,6 +15,7 @@ from compatlab.capture import (
     resolve,
     split_query,
     template_of,
+    to_record,
 )
 from compatlab.redaction import REDACTED, STRIPE_POLICY
 from compatlab.scenarios import parse
@@ -155,3 +157,14 @@ def test_a_step_whose_reference_is_unresolvable_is_skipped_and_reported():
     assert [r["step"] for r in report.records] == ["create"]
     assert report.skipped == [("w.fetch", "id: no key 'id'")]
     assert len(report.failures) == 1
+
+
+def test_a_record_carries_the_call_duration_for_the_timing_axis():
+    """Stored so the differ has something to read; never scored (ADR 0004 D7)."""
+    raw = RawCall(method="GET", path="/v1/customers", query={}, body=None,
+                  version="2022-11-15", status=200, headers={}, payload={},
+                  duration_ms=123.456)
+    record = to_record(raw, seq=0, workflow="w", step="s",
+                       path_template="/v1/customers", request_template=None,
+                       path_reference="/v1/customers")
+    assert record["duration_ms"] == 123.5

@@ -1,0 +1,125 @@
+{
+  "notes": "Hand verdicts on every finding the differ classifies `breaking`, written against the Stripe changelog for the span (2022-11-15, 2025-03-31.basil]. `compatlab score` refuses to publish a false-break rate while any breaking finding is unverdicted, so this file is a gate, not documentation. Three verdicts are allowed: `documented` (a published change explains the finding), `undocumented` (the difference is real and Stripe did not write it down, which is a finding in its own right), `false-break` (the lab is wrong). Entries match on rule, normalized locus, workflow, and endpoint; any field omitted matches anything. `reference` cites docs/ground-truth.md by release and entry number. Where the changelog describes a restructuring without enumerating the fields it displaces, the note says so: that mapping is inference, not a quotation.",
+  "verdicts": [
+    {
+      "match": {"rule": "enum-value-changed", "locus": "$.body.capture_method"},
+      "verdict": "documented",
+      "reference": "2024-04-10 #1 (M2)",
+      "note": "`automatic_async` becomes the default capture method when the request does not specify one. Quoted directly by the changelog entry."
+    },
+    {
+      "match": {"rule": "status-class-changed", "locus": "$.status"},
+      "verdict": "documented",
+      "reference": "basil #7 (M4)",
+      "note": "`GET /v1/invoices/upcoming` removed; 404 pointing at `POST /v1/invoices/create_preview`. RC1-607 found the changelog understates it — both call shapes 404, not just the all-subscriptions form."
+    },
+    {
+      "match": {"rule": "value-changed", "locus": "$.body.count", "endpoint": "GET /v1/refunds"},
+      "verdict": "documented",
+      "reference": "basil #18 (M3)",
+      "note": "Partial capture no longer creates a Refund, so the refunds list for the intent is empty and its count is 0."
+    },
+    {
+      "match": {"rule": "list-emptied", "locus": "$.body.data", "workflow": "partial_capture_reconcile"},
+      "verdict": "documented",
+      "reference": "basil #18 (M3)",
+      "note": "The same change seen as the collection itself: one Refund on A, none on basil."
+    },
+    {
+      "match": {"rule": "value-changed", "locus": "$.body.data[].amount_refunded", "endpoint": "GET /v1/charges"},
+      "verdict": "documented",
+      "reference": "basil #18 (M3)",
+      "note": "The Charge's own view of the same change: 3,000 cents refunded on A, 0 on basil, with no schema difference between them."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.current_period_start"},
+      "verdict": "documented",
+      "reference": "basil #1",
+      "note": "Billing periods moved to the subscription item; the subscription-level fields were removed."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.current_period_end"},
+      "verdict": "documented",
+      "reference": "basil #1",
+      "note": "Billing periods moved to the subscription item; the subscription-level fields were removed."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].charge", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #11",
+      "note": "Invoices support multiple partial payments, so the single-payment fields were removed in favor of the payments collection. The changelog entry announces the capability; it does not list the fields it displaces. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].payment_intent", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #11",
+      "note": "Same restructuring as `charge`. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].paid", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #11",
+      "note": "A boolean cannot express a partially paid invoice; `status` and the payments collection replace it. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].paid_out_of_band", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #11",
+      "note": "Same restructuring as `paid`. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].subscription", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #2",
+      "note": "Invoicing objects gained a `parent` provenance field; the direct `subscription` reference moved under it. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].plan", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #9",
+      "note": "InvoiceLineItem's top-level price fields were replaced by `pricing`."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].price", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #9",
+      "note": "InvoiceLineItem's top-level price fields were replaced by `pricing`."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].amount_excluding_tax", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #10",
+      "note": "Top-level tax properties were replaced by `total_taxes`/`taxes`, which took the excluding-tax amounts with them. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].unit_amount_excluding_tax", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #10",
+      "note": "Same restructuring as `amount_excluding_tax`. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].subscription", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #2",
+      "note": "Line-item provenance moved under `parent.subscription_item_details`. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].subscription_item", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #2",
+      "note": "Line-item provenance moved under `parent.subscription_item_details`. Mapping by inference."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].type", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #2",
+      "note": "`type` distinguished a subscription line from an invoice-item line; `parent` now carries that. Mapping by inference, and the baseline reports a type change on this field too."
+    },
+    {
+      "match": {"rule": "populated-field-removed", "locus": "$.body.data[].lines.data[].proration", "endpoint": "GET /v1/invoices"},
+      "verdict": "documented",
+      "reference": "basil #1",
+      "note": "Proration is a property of the item-level period, and moved under `parent.subscription_item_details`. Mapping by inference; the baseline also reports this field as a removed required property."
+    }
+  ]
+}

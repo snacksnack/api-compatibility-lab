@@ -10,10 +10,20 @@ HTTP status, silent truncation, and undocumented enum values. Every one of
 those breaks real integration code while the schema diff reports green.
 Behavior, not schema, is the contract customers actually depend on.
 
-**Status: Phase 2 (RC1-607) — dual replay.** Traffic is captured, sanitized,
-and replayed against both versions with run-specific noise canonicalized
-away. Classifying the differences and mapping them to affected workflows are
-Phase 3 and Phase 4. Nothing here is a finished tool yet.
+**Status: Phase 3 (RC1-608) — behavioral differ and scoring.** Traffic is
+captured, sanitized, replayed against both versions, and the differences are
+now classified and scored. Mapping each finding to the customer workflows it
+breaks, and the impact report that comes out of that, are Phase 4. Nothing
+here is a finished tool yet.
+
+> **Caught 4 of the 4 documented behavioral breaks the corpus exercises** (8
+> in the inventory). The schema-diff baseline gave no usable warning on three
+> of them — two with no entry at all, one naming the field but not the
+> behavior — while reporting 12,313 breaking changes on the same twenty
+> endpoints. 25 findings classified breaking, every one adjudicated against
+> Stripe's changelog, 0 false breaks.
+>
+> Full scorecard: [`docs/behavioral-diff-report.md`](docs/behavioral-diff-report.md).
 
 ## Ground truth
 
@@ -32,6 +42,9 @@ Stripe's own published OpenAPI snapshots at pinned commits.
   redaction actions, the independent scanner, and workflow-shaped capture.
 - [`docs/adr/0003-replay-and-canonicalization.md`](docs/adr/0003-replay-and-canonicalization.md) —
   re-execution, id and timestamp normalization, and the A/A control.
+- [`docs/adr/0004-differ-classification-and-scoring.md`](docs/adr/0004-differ-classification-and-scoring.md) —
+  the severity vocabulary, the rule table, the baseline's two caveats, and
+  what the score does not claim.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.
@@ -45,6 +58,9 @@ uv run compatlab coverage       # per-endpoint and per-workflow stats
 uv run compatlab scan           # independent PII audit of the stored corpus
 uv run compatlab control        # A/A control: same version twice, must be silent
 uv run compatlab replay         # A/B replay -> paired responses for the differ
+uv run compatlab diff --why     # classify the pairs -> findings/findings.jsonl
+uv run compatlab baseline       # regenerate the oasdiff baseline (network + docker)
+uv run compatlab score --out    # caught N of M, false-break rate, the report
 ```
 
 `capture` runs the workflows in [`scenarios/`](scenarios) against version A,
@@ -83,6 +99,69 @@ ground-truth breaks are visible in it — including `capture_method` going
 stayed identical. Details in
 [ADR 0003](docs/adr/0003-replay-and-canonicalization.md), including what a
 control run does *not* prove.
+
+## The differ
+
+A finding is not a line of diff output. It is a difference a client could
+notice, carrying the axis it was found on, the rule that classified it, both
+values, and one sentence of reasoning. Three severities, defined once:
+
+- **breaking** — a client that worked against A can malfunction against B
+  with no change of its own: data it read is gone, nulled, or different in a
+  way that changes a decision.
+- **risky** — it depends how the client was written: a strict deserializer, a
+  regex over an error message, an exhaustive switch, a dependence on list
+  position.
+- **benign** — no correctly written client can be affected.
+
+```
+breaking enum            enum-value-changed    $.body.capture_method: "automatic" -> "automatic_async"
+  why: `capture_method` now returns `automatic_async`, a value that never appears
+       anywhere on A; the request did not specify `capture_method`, so this is a
+       changed server default
+```
+
+Every finding names its rule, and the generated report prints the whole rule
+table, including the rules that did not fire. That is the only real answer to
+the objection that "breaking" means whatever the author needed it to mean: a
+reader who disagrees can point at a rule, and the rule is one sentence long.
+
+Two design calls are worth stating out of the dozen in
+[ADR 0004](docs/adr/0004-differ-classification-and-scoring.md). A **changed
+status subsumes the body**: when a step went 200 to 404, Phase 2's leaf-level
+diff emitted 85 lines about the fields of an error document, none of which was
+the finding — so the status change is one finding and the body differences are
+counted into a second. And a **changed value outranks a new enum member**:
+`capture_method` going `automatic` to `automatic_async` is both, and
+classifying it as "the set of possible values grew" would turn the project's
+headline finding into a footnote.
+
+## Scoring, and the baseline that can argue back
+
+The baseline is not a schema differ written here. It is `oasdiff` in
+`breaking` mode over Stripe's *own* published spec at the two commits pinned
+in ADR 0001, with the container pinned by digest and each spec's declared
+version checked before anything is diffed. Matching a finding to it is done
+generously, on field name within endpoint: the claim is that the baseline
+missed things, and a loose match makes that harder to claim, not easier.
+
+Two things about that run matter as much as the score. It reported **254,576
+breaking changes** over the whole spec pair, 11,270 of the 12,313 on the
+corpus's endpoints from a single rule — a new country or currency surfacing at
+every nested `anyOf` path that can reach it. Diffing these two specs does not
+hand a reader a green light they can trust; it hands them a haystack. And on
+the breaks it *did* have something to say about, what it said was sometimes
+beside the point: for M2 the baseline announces that `automatic_async` is now
+a possible value, which cannot tell anyone it became the default for requests
+that do not ask.
+
+The false-break rate is a judgment, not a measurement, so every finding
+classified `breaking` is adjudicated by hand in `scoring/adjudication.json`
+against the published changelog. `compatlab score` **exits non-zero while any
+breaking finding has no verdict** and publishes no rate — a rate computed over
+whichever findings happened to be adjudicated is the likeliest way this number
+would get flattering by accident. CI runs that gate, and a test fails on the
+other direction too: an adjudication entry matching no current finding.
 
 ## Sanitization
 

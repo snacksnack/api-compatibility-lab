@@ -53,3 +53,11 @@ jobs:
       # exists so the failure is legible as its own red X.
       - name: Corpus PII scan
         run: uv run python -m compatlab scan corpus/
+
+      # The Phase 3 honesty gate: scoring exits non-zero while any finding
+      # classified `breaking` has no hand verdict in scoring/adjudication.json,
+      # so a new finding cannot reach the published false-break rate
+      # unexamined. Offline — it reads the committed baseline index, and never
+      # runs oasdiff or touches Stripe.
+      - name: Score the differ against ground truth
+        run: uv run python -m compatlab score

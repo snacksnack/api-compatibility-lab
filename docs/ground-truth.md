@@ -105,6 +105,24 @@ spike (docs/spike-findings.md) live-verified entries where noted.
 
 **Provisional M = 8 (4 confirmed live, 4 pending exercise).**
 
+**Phase 3 (RC1-608) scored this inventory mechanically.** All four
+live-confirmed breaks are caught by the differ; the four pending entries are
+reported as *not exercised* rather than dropped from the denominator, and a
+test asserts none of them is ever reported as caught. What the schema-diff
+baseline said about each one, from `baseline/schema-diff-index.jsonl`:
+
+| M# | Caught | Schema diff | What the baseline said |
+|----|--------|-------------|------------------------|
+| M1 | yes (risky) | **green** | `automatic_payment_methods` is not named once on `POST /v1/payment_intents` |
+| M2 | yes (breaking) | **named only** | `automatic_async` is now a possible value of `capture_method` — not that it became the default |
+| M3 | yes (breaking) | **green** | `amount_refunded` is not named once on `GET /v1/charges` |
+| M4 | yes (breaking) | reported | `api-path-removed-without-deprecation` on `GET /v1/invoices/upcoming` |
+
+So three of the four caught breaks had no usable warning in a schema diff that
+reported 12,313 breaking changes on the same twenty endpoints. M4 is the one
+with a schema-visible half, and is counted as caught by both. Scorecard in
+docs/behavioral-diff-report.md; methodology in ADR 0004.
+
 M3 and M4 were confirmed by the RC1-607 dual replay: partial capture produced
 a 3,000-cent Refund on A and none on basil (`count: 1 -> 0`,
 `amount_refunded: 3000 -> 0`), and both invoice-preview call shapes went

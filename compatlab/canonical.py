@@ -30,7 +30,17 @@ from typing import Any
 # A Stripe object id: short lowercase prefix, then a long random-looking tail.
 # The prefix may itself be underscore-joined (`il_tmp_...` for a preview line),
 # which an earlier version of this pattern missed — the A/A control caught it.
-OBJECT_ID_RE = re.compile(r"\b([a-z]{2,8}(?:_[a-z]{2,8})?)_([A-Za-z0-9]{10,})\b")
+#
+# The tail must carry a capital or a digit. Without that clause the pattern
+# also matches an all-lowercase snake_case *word*: `charge_automatically`, the
+# value of `collection_method`, was being rewritten to `<id:charge>` on both
+# sides at once. A symmetric corruption is invisible to the A/A control
+# (ADR 0003 D6) and it blinds the one axis that cares most about enum values,
+# so RC1-608 tightened it — matching the rule `compatlab.capture` already
+# applied to path segments, where the same trap was spotted in Phase 1.
+OBJECT_ID_RE = re.compile(
+    r"\b([a-z]{2,8}(?:_[a-z]{2,8})?)_((?=[A-Za-z0-9]*[A-Z0-9])[A-Za-z0-9]{10,})\b"
+)
 # Seconds-since-epoch, loosely: 2020-09-13 through 2033-05-18.
 # A token this module already inserted; never re-match inside one.
 TOKEN_RE = re.compile(r"<[^<>]*>")
@@ -186,7 +196,7 @@ def canonical_record(record: dict, id_map: dict[str, str], origin: int) -> dict:
         key: VOLATILE_HEADERS.get(key.lower(), value)
         for key, value in response.get("headers", {}).items()
     }
-    return {
+    comparable = {
         "workflow": record["workflow"],
         "step": record["step"],
         "method": record["method"],
@@ -197,6 +207,12 @@ def canonical_record(record: dict, id_map: dict[str, str], origin: int) -> dict:
         "headers": headers,
         "body": canonicalize(response.get("body"), id_map, origin),
     }
+    # Carried through uncanonicalized: a duration is not a value to normalize,
+    # and the differ reports it on its own axis. Absent from corpora captured
+    # before RC1-608, which the differ treats as "no timing data".
+    if "duration_ms" in record:
+        comparable["duration_ms"] = record["duration_ms"]
+    return comparable
 
 
 def canonical_side(records: list[dict]) -> dict[tuple[str, str], dict]:
