@@ -47,7 +47,19 @@ and application; `percent_off` was never affected — the first spike run used
 even on basil-pinned requests (200/200, no diff). The documented break no
 longer exists on the live API and cannot be scored. Moved out of M.
 
-## 5. Consequences for the build
+## 5. The corpus itself leaked (caught in review)
+
+The spike excluded `client_secret` from the *printed* diff but wrote raw
+response bodies to the committed corpus: a test-mode PaymentIntent
+client_secret and account-bearing `request_log_url`s shipped to the public
+repo in PR #1, where the PR review agent blocked on them. Remediation:
+the sandbox PaymentIntents were cancelled (neutralizing the secrets — a
+history rewrite would not purge `refs/pull/1/head`), and scrubbing moved to
+write time in `compatlab/redact.py`, the seed of the RC1-606 component. The
+epic's zero-PII-scan requirement stopped being a formality the day the first
+corpus existed.
+
+## 6. Consequences for the build
 
 - **Ground truth must be live-verified.** The changelog alone overstates M:
   of the 10 provisional entries, live testing has already confirmed 2 and

@@ -1,28 +1,27 @@
 """RC1-605 spike: send the same requests under two Stripe-Version headers.
 
 Verifies the Phase 0 exit criterion: a fresh sandbox serves both pinned
-versions per request, and the paired responses land in the corpus format.
+versions per request, and the paired responses land in the corpus format
+(scrubbed at write time by compatlab.capture).
 
 Usage: put STRIPE_SECRET_KEY (test-mode) in .env, then
     uv run python scripts/spike_dual_call.py
 """
 
-import datetime
 import json
 import pathlib
 import sys
-import uuid
 
 import httpx
 from dotenv import dotenv_values
 
+from compatlab.capture import CaptureError, record
 from compatlab.diffing import shallow_diff
 
 VERSION_A = "2022-11-15"
 VERSION_B = "2025-03-31.basil"
 BASE_URL = "https://api.stripe.com"
 CORPUS_PATH = pathlib.Path(__file__).resolve().parent.parent / "corpus" / "spike-pair.jsonl"
-HEADER_WHITELIST = ("request-id", "stripe-version")
 
 # (name, method, path, form_body) — each chosen to surface a documented
 # behavioral break from docs/ground-truth.md on at least one side.
@@ -30,36 +29,15 @@ CALLS = [
     # M1 (automatic payment methods default) + M2 (capture_method default)
     ("create_payment_intent", "POST", "/v1/payment_intents",
      {"amount": "1099", "currency": "usd"}),
-    # M3: total_count expansion removed in basil
+    # Account-gated on a fresh sandbox (spike finding 3): kept to pin the
+    # same-status, different-error-body pair the differ must catch.
     ("list_customers_total_count", "GET",
      "/v1/customers?limit=3&expand[]=total_count", None),
-    # M4: amount_off + duration=forever coupons rejected in basil
-    # (percent_off is unaffected; see docs/spike-findings.md)
+    # Reversed upstream in clover (spike finding 4): kept as the live
+    # evidence that changelog ground truth can be stale.
     ("create_coupon_amount_off_forever", "POST", "/v1/coupons",
      {"amount_off": "500", "currency": "usd", "duration": "forever"}),
 ]
-
-
-def record(client: httpx.Client, version: str, name: str, method: str,
-           path: str, body: dict | None, seq: int) -> dict:
-    resp = client.request(method, path, data=body,
-                          headers={"Stripe-Version": version})
-    return {
-        "id": uuid.uuid4().hex[:12],
-        "seq": seq,
-        "call": name,
-        "method": method,
-        "path": path,
-        "request_body": body,
-        "stripe_version": version,
-        "captured_at": datetime.datetime.now(datetime.UTC).isoformat(),
-        "response": {
-            "status": resp.status_code,
-            "headers": {k: v for k, v in resp.headers.items()
-                        if k.lower() in HEADER_WHITELIST},
-            "body": resp.json(),
-        },
-    }
 
 
 def main() -> int:
@@ -75,8 +53,12 @@ def main() -> int:
         for seq, (name, method, path, body) in enumerate(CALLS):
             pair = {}
             for version in (VERSION_A, VERSION_B):
-                pair[version] = record(client, version, name, method, path,
-                                       body, seq)
+                try:
+                    pair[version] = record(client, version, name, method, path,
+                                           body, seq)
+                except CaptureError as exc:
+                    print(f"capture failed: {exc}")
+                    return 1
             records.extend(pair.values())
             resp_a, resp_b = (pair[v]["response"] for v in (VERSION_A, VERSION_B))
             print(f"\n== {name}: A={resp_a['status']} B={resp_b['status']}")
