@@ -1,0 +1,44 @@
+{
+  "workflow": "customer_sync_export",
+  "purpose": "Pages the customer list into the warehouse every hour so marketing and support read one contact table.",
+  "criticality": "medium",
+  "owner": "Data platform",
+  "sequence": [
+    {
+      "corpus": "pagination_and_errors.list_customers_first_page",
+      "reads": [
+        {
+          "locus": "$.body.data[].id",
+          "use": "request_input",
+          "feeds": "pagination_and_errors.list_customers_second_page",
+          "note": "the last id on the page becomes `starting_after` on the next request"
+        },
+        {
+          "locus": "$.body.has_more",
+          "use": "decision",
+          "note": "the pager stops when this is false"
+        },
+        {
+          "locus": "$.body.data[].email",
+          "use": "record",
+          "note": "the warehouse contact row, which marketing segments on"
+        }
+      ]
+    },
+    {
+      "corpus": "pagination_and_errors.list_customers_second_page",
+      "reads": [
+        {
+          "locus": "$.body.data[].id",
+          "use": "record",
+          "note": "the warehouse primary key for a contact"
+        },
+        {
+          "locus": "$.body.has_more",
+          "use": "decision",
+          "note": "the pager stops when this is false"
+        }
+      ]
+    }
+  ]
+}

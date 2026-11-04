@@ -1,0 +1,74 @@
+{
+  "workflow": "guest_checkout_capture",
+  "purpose": "Takes a card payment at checkout, marks the order payable, and issues a refund when support asks for one.",
+  "criticality": "high",
+  "owner": "Payments",
+  "sequence": [
+    {
+      "corpus": "checkout_card_payment.create_payment_intent",
+      "reads": [
+        {
+          "locus": "$.body.client_secret",
+          "use": "request_input",
+          "feeds": "checkout_card_payment.confirm_payment_intent",
+          "note": "handed to the browser SDK, which completes the payment against this intent"
+        },
+        {
+          "locus": "$.body.capture_method",
+          "use": "decision",
+          "note": "the order is marked payable only when the intent captures automatically; anything else is routed to the ops review queue"
+        },
+        {
+          "locus": "$.body.payment_method_types",
+          "use": "decision",
+          "note": "drives which payment buttons the storefront renders; a method the storefront does not know is rendered as a disabled tile"
+        },
+        {
+          "locus": "$.body.automatic_payment_methods",
+          "use": "decision",
+          "note": "the storefront renders its own method list only when Stripe is not choosing the methods itself"
+        }
+      ]
+    },
+    {
+      "corpus": "checkout_card_payment.confirm_payment_intent",
+      "reads": [
+        {
+          "locus": "$.body.status",
+          "use": "decision",
+          "note": "the order moves to paid on `succeeded` and nothing else"
+        },
+        {
+          "locus": "$.body.amount_received",
+          "use": "record",
+          "note": "written to the order ledger as the amount actually collected"
+        }
+      ]
+    },
+    {
+      "corpus": "checkout_card_payment.retrieve_payment_intent",
+      "reads": [
+        {
+          "locus": "$.body.status",
+          "use": "decision",
+          "note": "the post-redirect poll; the thank-you page waits on `succeeded`"
+        }
+      ]
+    },
+    {
+      "corpus": "checkout_card_payment.refund_payment",
+      "reads": [
+        {
+          "locus": "$.body.status",
+          "use": "decision",
+          "note": "the support tool shows the refund as issued only on `succeeded`"
+        },
+        {
+          "locus": "$.body.amount",
+          "use": "record",
+          "note": "the refunded amount written back against the order"
+        }
+      ]
+    }
+  ]
+}

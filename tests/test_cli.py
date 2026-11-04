@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import pathlib
+
+import pytest
 
 from compatlab.cli import _mismatches, main
 from compatlab.corpus import SCHEMA, write
@@ -165,3 +168,101 @@ def test_score_exits_non_zero_while_a_breaking_finding_is_unadjudicated(
                  "--adjudication", str(adjudication)])
     assert code == 1
     assert "no verdict" in capsys.readouterr().out
+
+
+# --- `impact`: the Phase 4 gate, and the two ways it refuses to publish
+
+
+def impact_fixtures(tmp_path, *, reads: list[dict],
+                    b_body: dict | None = None) -> dict[str, str]:
+    """A one-step corpus, its findings, and an inventory over it."""
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(pair_line({"capture_method": "automatic"},
+                               b_body or {"capture_method": "automatic_async"})
+                     + "\n")
+    findings = tmp_path / "findings.jsonl"
+    assert main(["diff", "--pairs", str(pairs), "--out", str(findings)]) == 0
+    workflows = tmp_path / "workflows"
+    workflows.mkdir()
+    (workflows / "01.json").write_text(json.dumps({
+        "workflow": "checkout", "purpose": "Takes a payment.",
+        "criticality": "high", "owner": "Payments",
+        "sequence": [{"corpus": "w.s", "reads": reads}],
+    }))
+    return {"--pairs": str(pairs), "--findings": str(findings),
+            "--workflows": str(workflows), "--pins": str(tmp_path / "p.jsonl")}
+
+
+def impact_args(fixtures: dict[str, str], *extra: str) -> list[str]:
+    return ["impact", *[x for kv in fixtures.items() for x in kv], *extra]
+
+
+def test_impact_maps_a_finding_onto_a_declared_read(tmp_path, capsys):
+    fixtures = impact_fixtures(tmp_path, reads=[
+        {"locus": "$.body.capture_method", "use": "decision",
+         "note": "routes to the ops queue"}])
+    assert main(impact_args(fixtures)) == 0
+    out = capsys.readouterr().out
+    assert "CORRUPTED" in out
+    assert "Workflow-mapping precision: 100%" in out
+    assert json.loads(pathlib.Path(fixtures["--pins"]).read_text())
+
+
+def test_impact_writes_both_reports_when_asked(tmp_path):
+    fixtures = impact_fixtures(tmp_path, reads=[
+        {"locus": "$.body.capture_method", "use": "decision", "note": "n"}])
+    report, page = tmp_path / "r.md", tmp_path / "r.html"
+    assert main(impact_args(fixtures, "--out", str(report),
+                            "--html", str(page))) == 0
+    assert "# API upgrade impact report" in report.read_text()
+    assert page.read_text().startswith("<!doctype html>")
+
+
+def test_impact_renders_json_when_asked(tmp_path, capsys):
+    fixtures = impact_fixtures(tmp_path, reads=[
+        {"locus": "$.body.capture_method", "use": "decision", "note": "n"}])
+    capsys.readouterr()  # drop the `diff` output the fixture produced
+    assert main(impact_args(fixtures, "--json")) == 0
+    out = capsys.readouterr().out
+    payload = json.loads(out[out.index("{"):out.rindex("}") + 1])
+    assert payload["workflows_affected"] == 1
+    assert payload["verification"]["precision"] == 1.0
+
+
+def test_impact_exits_non_zero_on_an_inventory_that_does_not_match(tmp_path,
+                                                                   capsys):
+    """A stale integration note must fail the build, not produce a claim."""
+    fixtures = impact_fixtures(tmp_path, reads=[
+        {"locus": "$.body.capture_mode", "use": "decision", "note": "n"}])
+    assert main(impact_args(fixtures)) == 1
+    out = capsys.readouterr().out
+    assert "invalid:" in out and "stale" in out
+
+
+def test_impact_exits_non_zero_when_there_is_no_inventory(tmp_path):
+    fixtures = impact_fixtures(tmp_path, reads=[])
+    for path in pathlib.Path(fixtures["--workflows"]).glob("*.json"):
+        path.unlink()
+    with pytest.raises(SystemExit, match="no workflow declarations"):
+        main(impact_args(fixtures))
+
+
+def test_impact_exits_non_zero_when_a_claim_cannot_be_confirmed(tmp_path,
+                                                                capsys,
+                                                                monkeypatch):
+    """The honesty gate: no precision figure while a claim is unverified.
+
+    Forced by making the mapper claim an impact the replay record does not
+    support — the differ saw the field change, the verifier is handed two
+    sides where it did not.
+    """
+    fixtures = impact_fixtures(tmp_path, reads=[
+        {"locus": "$.body.capture_method", "use": "decision", "note": "n"}])
+    pairs = pathlib.Path(fixtures["--pairs"])
+    entry = json.loads(pairs.read_text())
+    entry["b"]["response"]["body"] = {"capture_method": "automatic"}
+    pairs.write_text(json.dumps(entry) + "\n")
+    assert main(impact_args(fixtures)) == 1
+    out = capsys.readouterr().out
+    assert "could not be confirmed" in out
+    assert "UNCONFIRMED" in out

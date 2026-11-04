@@ -1,0 +1,53 @@
+{
+  "workflow": "nightly_refund_reconciliation",
+  "purpose": "Reconciles captured and reversed amounts against the general ledger every night. System of record for finance; a mismatch opens an exception ticket.",
+  "criticality": "high",
+  "owner": "Finance engineering",
+  "sequence": [
+    {
+      "corpus": "partial_capture_reconcile.capture_partial_amount",
+      "reads": [
+        {
+          "locus": "$.body.amount_received",
+          "use": "record",
+          "note": "posted to the ledger as the amount captured against the authorization"
+        }
+      ]
+    },
+    {
+      "corpus": "partial_capture_reconcile.list_refunds_for_intent",
+      "reads": [
+        {
+          "locus": "$.body.count",
+          "use": "decision",
+          "note": "the loop bound for reversal rows; zero means the job writes none and reports the night as balanced"
+        },
+        {
+          "locus": "$.body.data[].amount",
+          "use": "record",
+          "note": "one reversal row per refund, at this amount"
+        },
+        {
+          "locus": "$.body.has_more",
+          "use": "decision",
+          "note": "the pager keeps requesting while this is true"
+        }
+      ]
+    },
+    {
+      "corpus": "partial_capture_reconcile.retrieve_charge_after_partial",
+      "reads": [
+        {
+          "locus": "$.body.data[].amount_refunded",
+          "use": "decision",
+          "note": "compared against the reversal total the job just wrote; a mismatch opens a finance exception"
+        },
+        {
+          "locus": "$.body.data[].amount_captured",
+          "use": "record",
+          "note": "the settled amount the ledger balances against"
+        }
+      ]
+    }
+  ]
+}

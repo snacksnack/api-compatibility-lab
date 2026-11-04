@@ -1,0 +1,53 @@
+{
+  "workflow": "api_error_alerting",
+  "purpose": "The shared error handler every integration calls: classifies a non-2xx response, decides whether to retry, suppress, or page on-call, and composes the alert.",
+  "criticality": "medium",
+  "owner": "Platform reliability",
+  "sequence": [
+    {
+      "corpus": "pagination_and_errors.list_customers_total_count",
+      "reads": [
+        {
+          "locus": "$.body.error.message",
+          "use": "display",
+          "note": "pasted verbatim into the alert; the deprecation hint in this one is what told the team to stop asking for total_count"
+        },
+        {
+          "locus": "$.body.error.type",
+          "use": "decision",
+          "note": "an `invalid_request_error` is a bug in our code and is never retried"
+        }
+      ]
+    },
+    {
+      "corpus": "pagination_and_errors.retrieve_missing_customer",
+      "reads": [
+        {
+          "locus": "$.status",
+          "use": "decision",
+          "note": "a 404 is retried once and then dropped; any other failing status pages on-call"
+        },
+        {
+          "locus": "$.body.error.code",
+          "use": "decision",
+          "note": "`resource_missing` is suppressed from the alert channel entirely"
+        }
+      ]
+    },
+    {
+      "corpus": "pagination_and_errors.create_invalid_payment_intent",
+      "reads": [
+        {
+          "locus": "$.status",
+          "use": "decision",
+          "note": "a 400 is never retried"
+        },
+        {
+          "locus": "$.body.error.param",
+          "use": "record",
+          "note": "the offending parameter recorded on the alert so the owning team can find it"
+        }
+      ]
+    }
+  ]
+}

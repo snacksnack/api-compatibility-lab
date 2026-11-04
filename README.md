@@ -10,11 +10,11 @@ HTTP status, silent truncation, and undocumented enum values. Every one of
 those breaks real integration code while the schema diff reports green.
 Behavior, not schema, is the contract customers actually depend on.
 
-**Status: Phase 3 (RC1-608) — behavioral differ and scoring.** Traffic is
-captured, sanitized, replayed against both versions, and the differences are
-now classified and scored. Mapping each finding to the customer workflows it
-breaks, and the impact report that comes out of that, are Phase 4. Nothing
-here is a finished tool yet.
+**Status: Phase 4 (RC1-609) — affected-workflow mapping and the impact
+report.** Traffic is captured, sanitized, replayed against both versions,
+classified, scored, and now mapped onto the customer workflows it affects.
+Generating executable regression tests from the pins is Phase 5. Nothing here
+is a finished tool yet.
 
 > **Caught 4 of the 4 documented behavioral breaks the corpus exercises** (8
 > in the inventory). The schema-diff baseline gave no usable warning on three
@@ -23,7 +23,15 @@ here is a finished tool yet.
 > endpoints. 25 findings classified breaking, every one adjudicated against
 > Stripe's changelog, 0 false breaks.
 >
-> Full scorecard: [`docs/behavioral-diff-report.md`](docs/behavioral-diff-report.md).
+> **Of five declared customer workflows, one stops outright, two keep running
+> and go silently wrong, one is visibly degraded, and one is unaffected.** 13
+> impact claims, all 13 confirmed against the replay record by a checker that
+> does not read the classifier's rule table.
+>
+> Scorecard: [`docs/behavioral-diff-report.md`](docs/behavioral-diff-report.md).
+> Impact report: [`docs/impact-report.md`](docs/impact-report.md), and the
+> self-contained page a customer would be sent,
+> [`docs/impact-report.html`](docs/impact-report.html).
 
 ## Ground truth
 
@@ -45,6 +53,9 @@ Stripe's own published OpenAPI snapshots at pinned commits.
 - [`docs/adr/0004-differ-classification-and-scoring.md`](docs/adr/0004-differ-classification-and-scoring.md) —
   the severity vocabulary, the rule table, the baseline's two caveats, and
   what the score does not claim.
+- [`docs/adr/0005-workflow-impact-mapping.md`](docs/adr/0005-workflow-impact-mapping.md) —
+  why the integration inventory is declared, the consequence table, and what
+  the mapping-precision number does and does not mean.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.
@@ -61,6 +72,7 @@ uv run compatlab replay         # A/B replay -> paired responses for the differ
 uv run compatlab diff --why     # classify the pairs -> findings/findings.jsonl
 uv run compatlab baseline       # regenerate the oasdiff baseline (network + docker)
 uv run compatlab score --out    # caught N of M, false-break rate, the report
+uv run compatlab impact --out --html   # map findings onto customer workflows
 ```
 
 `capture` runs the workflows in [`scenarios/`](scenarios) against version A,
@@ -162,6 +174,78 @@ breaking finding has no verdict** and publishes no rate — a rate computed over
 whichever findings happened to be adjudicated is the likeliest way this number
 would get flattering by accident. CI runs that gate, and a test fails on the
 other direction too: an adjudication entry matching no current finding.
+
+## The impact report
+
+A grouped finding list is not an answer to "will this upgrade break us". The
+corpus was captured workflow-shaped, so every finding already names a workflow
+and a step; grouping by that is one line of code. The fact the findings cannot
+carry is the one that decides whether a difference matters: **which of these
+fields does the client read, and what does it do with the value.**
+
+Nothing in captured traffic says that. The `{{step.field}}` references prove a
+handful of reads, every one of them an `id`, and nothing about what happens to
+a value after the response is parsed. So it is declared, in
+[`workflows/`](workflows), and on a real engagement it is declared by the
+customer — this is the artifact an FDE fills in during discovery, and the
+conversation it forces is itself the deliverable.
+
+```json
+{
+  "corpus": "partial_capture_reconcile.list_refunds_for_intent",
+  "reads": [
+    {"locus": "$.body.count", "use": "decision",
+     "note": "the loop bound for reversal rows; zero means the job writes
+              none and reports the night as balanced"}
+  ]
+}
+```
+
+A declaration states facts and never conclusions — a locus, what the client
+does with the value, a note — and the consequence is derived from that joined
+to the finding. `blocks` means the sequence stops; `corrupts` means it
+finishes and is silently wrong; `degrades` means a person sees something
+different. Three things keep the inventory from being a hand-written answer
+key:
+
+- **It is validated against the captured traffic.** A declared step the corpus
+  never captured, a sequence that runs backwards through the captured order, a
+  locus absent from that step's version-A response, a `request_input` read
+  feeding a step that is not later — each one fails the build and publishes
+  nothing. The locus gate is the one that earns its keep: a stale integration
+  note is the normal way this input goes wrong.
+- **Every claim is re-derived from the replay record** by a checker that does
+  not import the rule table and asks only questions with observable answers.
+  `compatlab impact` exits non-zero while any claim is unconfirmed, so a
+  precision figure is never computed over whichever claims happened to verify.
+- **The report publishes the numbers that would expose a rigged inventory**:
+  13 of 36 declared reads are touched, 8 real differences fall on calls the
+  inventory does not describe at all, and one workflow came out clear. An
+  inventory written backwards from the findings would touch every read and
+  leave nothing clear.
+
+The inventory is also what resolves a `risky` finding. Phase 3 calls a
+difference risky when it depends on how the client was written — a strict
+deserializer, an exhaustive switch, a dependence on list position — and a
+declared read is exactly that missing fact. 44 of the 93 findings are risky,
+and three of them become concrete here: `payment_method_types` gaining four
+members corrupts a storefront that renders a tile per method, and no finding
+on its own could say so.
+
+```
+subscription_renewal_billing — BLOCKED
+  3. preview_upcoming_by_subscription  $.body.amount_due  decision  BLOCKED
+     this call returned 200 on the old version and 404 on the new one;
+     the workflow stops here
+```
+
+Each blocked or corrupted read becomes a pin in
+[`pins/pins.jsonl`](pins/pins.jsonl): the step to replay, the locus, the
+assertion, and both versions' values. Phase 4 states what must be pinned;
+RC1-610 compiles each into an executable test and verifies that it fails on
+the new version and passes on the old. Details, including what the precision
+number does not mean, in
+[ADR 0005](docs/adr/0005-workflow-impact-mapping.md).
 
 ## Sanitization
 
