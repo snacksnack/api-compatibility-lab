@@ -16,13 +16,13 @@ import uuid
 import httpx
 from dotenv import dotenv_values
 
+from compatlab.diffing import shallow_diff
+
 VERSION_A = "2022-11-15"
 VERSION_B = "2025-03-31.basil"
 BASE_URL = "https://api.stripe.com"
 CORPUS_PATH = pathlib.Path(__file__).resolve().parent.parent / "corpus" / "spike-pair.jsonl"
 HEADER_WHITELIST = ("request-id", "stripe-version")
-# Expected to differ between any two calls; excluded from the value diff.
-NOISE_KEYS = {"id", "created", "client_secret", "livemode"}
 
 # (name, method, path, form_body) — each chosen to surface a documented
 # behavioral break from docs/ground-truth.md on at least one side.
@@ -60,21 +60,6 @@ def record(client: httpx.Client, version: str, name: str, method: str,
             "body": resp.json(),
         },
     }
-
-
-def shallow_diff(a: dict, b: dict) -> list[str]:
-    lines = []
-    for key in sorted(set(a) | set(b)):
-        if key in NOISE_KEYS:
-            continue
-        if key not in a:
-            lines.append(f"  only in B: {key}")
-        elif key not in b:
-            lines.append(f"  only in A: {key}")
-        elif a[key] != b[key]:
-            lines.append(f"  value differs: {key}: "
-                         f"{json.dumps(a[key])[:80]} -> {json.dumps(b[key])[:80]}")
-    return lines
 
 
 def main() -> int:

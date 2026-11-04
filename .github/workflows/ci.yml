@@ -1,0 +1,47 @@
+name: CI
+
+# push scoped to main so a PR commit runs once (the pull_request event),
+# not twice — the ESP repo's RC1-558 lesson, applied from day one.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A follow-up push cancels the superseded run, except on main, where every
+# run completes so the Test Optimization history stays whole.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync
+        run: uv sync --all-groups
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      # --ddtrace reports test-level results to Test Optimization, agentless.
+      # Not a test credential: the suite passes identically with no key, and
+      # the spike's Stripe calls never run in CI (no STRIPE_SECRET_KEY here).
+      - name: Tests
+        env:
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_CIVISIBILITY_AGENTLESS_ENABLED: "true"
+          DD_SITE: datadoghq.com
+          DD_SERVICE: api-compatibility-lab
+          DD_ENV: ci
+        run: uv run pytest --ddtrace --cov
