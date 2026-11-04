@@ -1,8 +1,16 @@
-"""`compatlab capture | scan | coverage`.
+"""`compatlab capture | scan | coverage | control | replay | diff | baseline | score`.
 
-`scan` is the one that matters to CI: it is the epic's scored requirement
-(zero PII findings on a scan of the stored corpus) as a command that exits
-non-zero, run against the committed corpus on every push.
+Two of these matter to CI, and both exit non-zero on failure rather than
+printing a warning:
+
+- `scan` is the epic's scored requirement — zero PII findings on the stored
+  corpus — run against the committed corpus on every push.
+- `score` refuses to publish a false-break rate while any breaking finding is
+  unadjudicated, so a new finding cannot slip into the headline unexamined.
+
+`baseline` is the odd one out: it needs the network and a container runtime,
+so it is run by hand and its output committed. Everything else works offline
+from the committed artifacts.
 """
 
 from __future__ import annotations
@@ -15,11 +23,14 @@ import sys
 import httpx
 from dotenv import dotenv_values
 
-from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B
+from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B, scoring
+from compatlab import baseline as bl
 from compatlab.canonical import canonical_side, diff_paths
 from compatlab.capture import capture_all, seed_known
 from compatlab.corpus import files, read, validate, write
 from compatlab.coverage import GROUND_TRUTH_M, render, summarize
+from compatlab.differ import diff_pairs
+from compatlab.findings import SEVERITIES
 from compatlab.redaction import STRIPE_POLICY, Policy
 from compatlab.replay import pair, replay_corpus
 from compatlab.scenarios import SCENARIO_DIR, load_all
@@ -28,6 +39,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT / "corpus"
 DEFAULT_CORPUS = CORPUS_DIR / "version-a.jsonl"
 PAIRS_PATH = ROOT / "replay" / "pairs.jsonl"
+FINDINGS_PATH = ROOT / "findings" / "findings.jsonl"
+BASELINE_PATH = ROOT / bl.INDEX_PATH
+ADJUDICATION_PATH = ROOT / scoring.ADJUDICATION_PATH
+SPEC_CACHE = ROOT / ".cache" / "specs"
+REPORT_PATH = ROOT / "docs" / "behavioral-diff-report.md"
 
 
 def _slug(version: str) -> str:
@@ -228,6 +244,125 @@ def cmd_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_pairs(path: pathlib.Path) -> list[dict]:
+    with path.open() as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def _corpus_endpoints(pairs: list[dict]) -> tuple[list[str], list[str]]:
+    """The endpoints the replay actually called, as templates and as keys."""
+    templates = sorted({p["path_template"] for p in pairs})
+    keys = sorted({bl.endpoint_key(p["method"], p["path_template"])
+                   for p in pairs})
+    return templates, keys
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    """Classify the paired responses. The heart of Phase 3."""
+    pairs = _read_pairs(pathlib.Path(args.pairs))
+    report = diff_pairs(pairs)
+    wanted = set(args.severity or SEVERITIES)
+
+    if args.json:
+        print(json.dumps({
+            **report.to_dict(),
+            "detail": [f.to_dict() for f in report.sorted_findings()
+                       if f.severity in wanted],
+        }, indent=2))
+    else:
+        print(f"compared {report.steps_compared} step(s); "
+              f"{report.steps_with_findings} differ")
+        print("findings: " + ", ".join(
+            f"{n} {s}" for s, n in report.counts("severity").items()) or "none")
+        step = None
+        for finding in report.sorted_findings():
+            if finding.severity not in wanted:
+                continue
+            if (finding.workflow, finding.step) != step:
+                step = (finding.workflow, finding.step)
+                print(f"\n  {finding.workflow}.{finding.step} "
+                      f"({finding.method} {finding.path_template})")
+            print(f"    {finding.line()}")
+            if args.why:
+                print(f"      why: {finding.rationale}")
+
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w") as handle:
+        for finding in report.sorted_findings():
+            handle.write(json.dumps(finding.to_dict(), sort_keys=True) + "\n")
+    print(f"\nwrote {len(report.findings)} findings to {out}")
+
+    findings_as_records = [f.to_dict() for f in report.findings]
+    leaks = _scan_records(findings_as_records, "findings", seeded_policy())
+    if leaks:
+        print(f"REFUSING to stop here: {len(leaks)} finding(s) in the findings "
+              f"file — a sanitized corpus produced unsanitized findings.")
+        for leak in leaks[:20]:
+            print(f"  {leak}")
+        return 1
+    return 0
+
+
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """Regenerate the schema-diff baseline. Network + container runtime."""
+    pairs = _read_pairs(pathlib.Path(args.pairs))
+    templates, keys = _corpus_endpoints(pairs)
+    match = bl.match_path_regex(templates)
+    print(f"scoping to {len(keys)} endpoint(s) over {len(templates)} path(s)")
+    try:
+        spec_a = bl.fetch_spec("a", pathlib.Path(args.cache))
+        spec_b = bl.fetch_spec("b", pathlib.Path(args.cache))
+    except bl.BaselineError as exc:
+        sys.exit(str(exc))
+    print(f"specs: {spec_a.name} -> {spec_b.name} (declared versions verified)")
+
+    unscoped = None
+    if args.unscoped:
+        print("counting the unscoped diff (this takes a minute)...")
+        unscoped = bl.count_oasdiff(spec_a, spec_b)
+        print(f"  {unscoped:,} breaking entries over the whole spec pair")
+
+    entries = bl.run_oasdiff(spec_a, spec_b, match=match)
+    index = bl.build_index(entries, scope=keys, match=match, unscoped=unscoped)
+    count = bl.write_index(pathlib.Path(args.out), index)
+    meta = index["meta"]
+    print(f"{meta['entries_matched_paths']:,} entries within the matched "
+          f"paths, {meta['entries_corpus_endpoints']:,} on the corpus's own "
+          f"endpoints")
+    print(f"wrote {count} endpoint record(s) to {args.out}")
+    return 0
+
+
+def cmd_score(args: argparse.Namespace) -> int:
+    """Score the differ against ground truth and against the baseline."""
+    pairs = _read_pairs(pathlib.Path(args.pairs))
+    report = diff_pairs(pairs)
+    try:
+        index = bl.BaselineIndex.load(pathlib.Path(args.baseline))
+    except FileNotFoundError:
+        sys.exit(f"no baseline at {args.baseline}; run `compatlab baseline` first")
+    adjudication = scoring.Adjudication.load(pathlib.Path(args.adjudication))
+    card = scoring.score(report, index, adjudication, pairs)
+
+    if args.json:
+        print(json.dumps(card, indent=2))
+    else:
+        print(scoring.render(card))
+
+    if args.out:
+        pathlib.Path(args.out).write_text(scoring.render(card) + "\n")
+        print(f"\nwrote {args.out}")
+
+    unadjudicated = card["false_breaks"]["unadjudicated"]
+    if unadjudicated:
+        print(f"\nFAIL: {len(unadjudicated)} breaking finding(s) with no "
+              f"verdict in {args.adjudication}; the false-break rate is not "
+              f"publishable until every one is adjudicated.")
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="compatlab", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -255,6 +390,32 @@ def build_parser() -> argparse.ArgumentParser:
     ctl.add_argument("--show", type=int, default=6,
                      help="mismatch lines to print per step")
     ctl.set_defaults(func=cmd_control)
+
+    dif = sub.add_parser("diff", help="classify paired A/B responses")
+    dif.add_argument("--pairs", default=str(PAIRS_PATH))
+    dif.add_argument("--out", default=str(FINDINGS_PATH))
+    dif.add_argument("--severity", action="append", choices=SEVERITIES,
+                     help="print only this severity; repeatable")
+    dif.add_argument("--why", action="store_true", help="print each rationale")
+    dif.add_argument("--json", action="store_true")
+    dif.set_defaults(func=cmd_diff)
+
+    base = sub.add_parser("baseline", help="regenerate the schema-diff baseline")
+    base.add_argument("--pairs", default=str(PAIRS_PATH))
+    base.add_argument("--out", default=str(BASELINE_PATH))
+    base.add_argument("--cache", default=str(SPEC_CACHE))
+    base.add_argument("--unscoped", action="store_true",
+                      help="also count the whole-spec diff (slow, ~390MB)")
+    base.set_defaults(func=cmd_baseline)
+
+    sco = sub.add_parser("score", help="caught N of M, baseline, false breaks")
+    sco.add_argument("--pairs", default=str(PAIRS_PATH))
+    sco.add_argument("--baseline", default=str(BASELINE_PATH))
+    sco.add_argument("--adjudication", default=str(ADJUDICATION_PATH))
+    sco.add_argument("--out", nargs="?", const=str(REPORT_PATH),
+                     help="also write the markdown report")
+    sco.add_argument("--json", action="store_true")
+    sco.set_defaults(func=cmd_score)
 
     cov = sub.add_parser("coverage", help="per-endpoint coverage stats")
     cov.add_argument("path", nargs="?")

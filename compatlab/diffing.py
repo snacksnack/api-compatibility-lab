@@ -1,7 +1,11 @@
 """Shallow response diffing, extracted from the RC1-605 spike.
 
-The real behavioral differ (RC1-608) replaces this; the spike and its tests
-use it to compare paired A/B response bodies at the top level.
+Superseded. The real behavioral differ is `compatlab.differ` plus
+`compatlab.deltas` and `compatlab.classify` (RC1-608): typed deltas, a rule
+table, severities, and loci that reach past the top level. This stays because
+`scripts/spike_dual_call.py` is the Phase 0 artifact and still runs — it
+verifies version pinning against a fresh sandbox, which is worth being able
+to re-run on its own — and nothing in the pipeline imports it.
 """
 
 from __future__ import annotations

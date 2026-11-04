@@ -92,3 +92,76 @@ def test_mismatches_flags_a_step_present_on_only_one_side():
     out = _mismatches([control_record("create", {})],
                       [control_record("create", {}), control_record("extra", {}, 1)])
     assert "present on only one side" in out["w.extra"][0]
+
+
+def pair_line(a_body: dict, b_body: dict, *, status_b: int = 200) -> str:
+    a = make_record(a_body)
+    b = make_record(b_body)
+    b["response"]["status"] = status_b
+    b["stripe_version"] = "2025-03-31.basil"
+    return json.dumps({
+        "workflow": "w", "step": "s", "seq": 0, "method": "POST",
+        "path_template": "/v1/customers", "targets": ["M1"], "a": a, "b": b,
+    })
+
+
+def test_diff_writes_findings_and_prints_the_rule_and_the_reason(tmp_path, capsys):
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(pair_line({"capture_method": "automatic"},
+                               {"capture_method": "automatic_async"}) + "\n")
+    out = tmp_path / "findings.jsonl"
+    assert main(["diff", "--pairs", str(pairs), "--out", str(out), "--why"]) == 0
+    printed = capsys.readouterr().out
+    assert "enum-value-changed" in printed
+    assert "changed server default" in printed
+    written = [json.loads(line) for line in out.read_text().splitlines()]
+    assert [f["rule"] for f in written] == ["enum-value-changed"]
+    assert written[0]["severity"] == "breaking"
+
+
+def test_diff_can_print_one_severity_only(tmp_path, capsys):
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(pair_line({"a": 1}, {"a": 1, "added": None}) + "\n")
+    main(["diff", "--pairs", str(pairs), "--out", str(tmp_path / "f.jsonl"),
+          "--severity", "breaking"])
+    printed = capsys.readouterr().out
+    assert "field-added-empty" not in printed
+    assert "1 benign" in printed
+
+
+def test_diff_refuses_to_finish_if_a_finding_quotes_unredacted_data(tmp_path,
+                                                                   capsys):
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(pair_line({"email": "ada@lovelace.org"},
+                               {"email": "grace@hopper.org"}) + "\n")
+    assert main(["diff", "--pairs", str(pairs),
+                 "--out", str(tmp_path / "f.jsonl")]) == 1
+    assert "REFUSING to stop here" in capsys.readouterr().out
+
+
+def test_diff_renders_json_when_asked(tmp_path, capsys):
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(pair_line({"x": 1}, {"x": 2}) + "\n")
+    main(["diff", "--pairs", str(pairs), "--out", str(tmp_path / "f.jsonl"),
+          "--json"])
+    payload = json.loads(capsys.readouterr().out.split("\nwrote")[0])
+    assert payload["steps_compared"] == 1
+    assert payload["detail"][0]["axis"] == "value"
+
+
+def test_score_exits_non_zero_while_a_breaking_finding_is_unadjudicated(
+        tmp_path, capsys):
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(pair_line({"x": 1}, {"x": 2}) + "\n")
+    index = tmp_path / "index.jsonl"
+    index.write_text(json.dumps({
+        "record": "meta", "rules": [], "entries_matched_paths": 0,
+        "entries_corpus_endpoints": 0, "entries_unscoped": 0,
+        "oasdiff": {"build": "test"},
+    }) + "\n")
+    adjudication = tmp_path / "adjudication.json"
+    adjudication.write_text(json.dumps({"verdicts": []}))
+    code = main(["score", "--pairs", str(pairs), "--baseline", str(index),
+                 "--adjudication", str(adjudication)])
+    assert code == 1
+    assert "no verdict" in capsys.readouterr().out

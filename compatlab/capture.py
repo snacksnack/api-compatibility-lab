@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -63,6 +64,9 @@ class RawCall:
     status: int
     headers: dict[str, str]
     payload: Any
+    # Wall-clock time for the call. Stored so the differ's timing axis has
+    # something to read; never scored, for the reasons in ADR 0004 D7.
+    duration_ms: float = 0.0
 
 
 @dataclass
@@ -166,11 +170,13 @@ def seed_known(policy: Policy, scenarios: list[Scenario]) -> Policy:
 def call(client: httpx.Client, version: str, method: str, path: str,
          body: dict[str, str] | None) -> RawCall:
     base, query = split_query(path)
+    started = time.perf_counter()
     try:
         response = client.request(method, path, data=body,
                                   headers={"Stripe-Version": version})
     except httpx.HTTPError as exc:
         raise CaptureError(f"{method} {path} ({version}): {exc}") from exc
+    duration_ms = (time.perf_counter() - started) * 1000
     try:
         payload = response.json()
     except ValueError:
@@ -185,6 +191,7 @@ def call(client: httpx.Client, version: str, method: str, path: str,
         headers={k: v for k, v in response.headers.items()
                  if k.lower() in HEADER_WHITELIST},
         payload=payload,
+        duration_ms=duration_ms,
     )
 
 
@@ -213,6 +220,7 @@ def to_record(raw: RawCall, *, seq: int, workflow: str, step: str,
         "request_template": policy.redact(request_template),
         "stripe_version": raw.version,
         "captured_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "duration_ms": round(raw.duration_ms, 1),
         "redaction": {"policy": policy.name},
         "response": {
             "status": raw.status,

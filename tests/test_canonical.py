@@ -138,3 +138,37 @@ def test_diff_paths_reports_leaves_sides_and_lengths():
 def test_diff_paths_truncates_long_values():
     [line] = diff_paths({"k": "x" * 400}, {"k": "y" * 400})
     assert len(line) < 160
+
+
+def test_a_snake_case_enum_value_is_not_mistaken_for_an_object_id():
+    """The symmetric corruption the A/A control could never catch (RC1-608).
+
+    `collection_method: "charge_automatically"` was being rewritten to
+    `<id:charge>` on both sides at once, so the control stayed green while the
+    enum axis went blind. The fix is the rule `compatlab.capture` already used
+    on path segments: an id's random half carries a capital or a digit.
+    """
+    out = canonicalize({"collection_method": "charge_automatically"}, {}, ORIGIN)
+    assert out == {"collection_method": "charge_automatically"}
+
+
+def test_a_resource_name_in_a_url_is_left_alone():
+    out = canonicalize({"url": "/v1/balance_transactions"}, {}, ORIGIN)
+    assert out == {"url": "/v1/balance_transactions"}
+
+
+def test_a_real_object_id_is_still_tokenized_by_shape():
+    out = canonicalize({"latest_charge": "ch_3UY7BHAtx0eklzIQ1SmUhP73"}, {},
+                       ORIGIN)
+    assert out == {"latest_charge": "<id:ch>"}
+
+
+def test_a_duration_is_carried_through_uncanonicalized():
+    record = rec("s", {"id": "cus_AAAAAAAAAAAA"})
+    record["duration_ms"] = 123.4
+    out = canonical_record(record, {}, ORIGIN)
+    assert out["duration_ms"] == 123.4
+
+
+def test_a_record_without_a_duration_carries_no_timing_key():
+    assert "duration_ms" not in canonical_record(rec("s", {}), {}, ORIGIN)
