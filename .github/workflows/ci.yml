@@ -46,3 +46,10 @@ jobs:
           DD_SERVICE: api-compatibility-lab
           DD_ENV: ci
         run: uv run pytest --ddtrace --cov
+
+      # The epic's scored requirement as a gate, not a footnote: an
+      # independent scan of the committed corpus must find zero PII or
+      # secrets. The test suite asserts the same thing per file; this step
+      # exists so the failure is legible as its own red X.
+      - name: Corpus PII scan
+        run: uv run python -m compatlab scan corpus/

@@ -1,0 +1,38 @@
+{
+  "workflow": "partial_capture_reconcile",
+  "description": "Manual-capture authorization, partial capture, then reconcile against the refunds list.",
+  "targets": ["M3"],
+  "note": "Through 2024, partially capturing an authorization created a Refund for the uncaptured remainder; basil stopped doing that. Nothing in the schema changed. A reconciliation job that counts refunds silently gets a different answer, which is exactly the class of break this project exists to catch.",
+  "steps": [
+    {
+      "step": "create_manual_capture_intent",
+      "method": "POST",
+      "path": "/v1/payment_intents",
+      "body": {
+        "amount": "5000",
+        "currency": "usd",
+        "capture_method": "manual",
+        "payment_method": "pm_card_visa",
+        "confirm": "true",
+        "return_url": "https://example.invalid/auth/return"
+      }
+    },
+    {
+      "step": "capture_partial_amount",
+      "method": "POST",
+      "path": "/v1/payment_intents/{{create_manual_capture_intent.id}}/capture",
+      "body": {"amount_to_capture": "2000"}
+    },
+    {
+      "step": "list_refunds_for_intent",
+      "method": "GET",
+      "path": "/v1/refunds?limit=3&payment_intent={{create_manual_capture_intent.id}}",
+      "note": "The observable: one refund on version A, none on basil."
+    },
+    {
+      "step": "retrieve_charge_after_partial",
+      "method": "GET",
+      "path": "/v1/charges?limit=1&payment_intent={{create_manual_capture_intent.id}}"
+    }
+  ]
+}

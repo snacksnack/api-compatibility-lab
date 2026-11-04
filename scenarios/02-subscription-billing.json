@@ -1,0 +1,97 @@
+{
+  "workflow": "subscription_billing",
+  "description": "Recurring billing: product, price, subscriber with a default payment method, subscription, invoice preview.",
+  "targets": ["M4"],
+  "note": "The two preview steps are the pair that matters. Previewing by customer alone is the form basil removed; previewing with subscription context is the form that survives. Same endpoint, same status family, different answer about whether an integration still works.",
+  "steps": [
+    {
+      "step": "create_product",
+      "method": "POST",
+      "path": "/v1/products",
+      "body": {"name": "Reconciliation Pro", "description": "compatlab capture fixture"}
+    },
+    {
+      "step": "create_price",
+      "method": "POST",
+      "path": "/v1/prices",
+      "body": {
+        "product": "{{create_product.id}}",
+        "unit_amount": "2500",
+        "currency": "usd",
+        "recurring[interval]": "month",
+        "nickname": "Pro monthly"
+      }
+    },
+    {
+      "step": "create_subscriber",
+      "method": "POST",
+      "path": "/v1/customers",
+      "body": {
+        "email": "grace.hopper@example.com",
+        "name": "Grace Hopper",
+        "phone": "+14155550187",
+        "address[line1]": "200 Compiler Road",
+        "address[city]": "Arlington",
+        "address[state]": "VA",
+        "address[postal_code]": "22201",
+        "address[country]": "US"
+      }
+    },
+    {
+      "step": "create_subscriber_payment_method",
+      "method": "POST",
+      "path": "/v1/payment_methods",
+      "body": {
+        "type": "card",
+        "card[token]": "tok_visa",
+        "billing_details[email]": "grace.hopper@example.com",
+        "billing_details[name]": "Grace Hopper"
+      }
+    },
+    {
+      "step": "attach_subscriber_payment_method",
+      "method": "POST",
+      "path": "/v1/payment_methods/{{create_subscriber_payment_method.id}}/attach",
+      "body": {"customer": "{{create_subscriber.id}}"}
+    },
+    {
+      "step": "set_default_payment_method",
+      "method": "POST",
+      "path": "/v1/customers/{{create_subscriber.id}}",
+      "body": {
+        "invoice_settings[default_payment_method]": "{{create_subscriber_payment_method.id}}"
+      }
+    },
+    {
+      "step": "create_subscription",
+      "method": "POST",
+      "path": "/v1/subscriptions",
+      "body": {
+        "customer": "{{create_subscriber.id}}",
+        "items[0][price]": "{{create_price.id}}"
+      }
+    },
+    {
+      "step": "list_subscription_invoices",
+      "method": "GET",
+      "path": "/v1/invoices?limit=3&subscription={{create_subscription.id}}"
+    },
+    {
+      "step": "preview_upcoming_by_customer",
+      "method": "GET",
+      "path": "/v1/invoices/upcoming?customer={{create_subscriber.id}}",
+      "note": "The removed form: a preview across all of a customer's subscriptions."
+    },
+    {
+      "step": "preview_upcoming_by_subscription",
+      "method": "GET",
+      "path": "/v1/invoices/upcoming?customer={{create_subscriber.id}}&subscription={{create_subscription.id}}",
+      "note": "The surviving form, captured alongside so the differ can tell removal from breakage."
+    },
+    {
+      "step": "cancel_subscription",
+      "method": "DELETE",
+      "path": "/v1/subscriptions/{{create_subscription.id}}"
+    }
+  ]
+}

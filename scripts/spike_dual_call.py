@@ -2,25 +2,23 @@
 
 Verifies the Phase 0 exit criterion: a fresh sandbox serves both pinned
 versions per request, and the paired responses land in the corpus format
-(scrubbed at write time by compatlab.capture).
+(redacted at write time by compatlab.redaction).
 
 Usage: put STRIPE_SECRET_KEY (test-mode) in .env, then
     uv run python scripts/spike_dual_call.py
 """
 
-import json
 import pathlib
 import sys
 
 import httpx
 from dotenv import dotenv_values
 
+from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B
 from compatlab.capture import CaptureError, record
+from compatlab.corpus import write
 from compatlab.diffing import shallow_diff
 
-VERSION_A = "2022-11-15"
-VERSION_B = "2025-03-31.basil"
-BASE_URL = "https://api.stripe.com"
 CORPUS_PATH = pathlib.Path(__file__).resolve().parent.parent / "corpus" / "spike-pair.jsonl"
 
 # (name, method, path, form_body) — each chosen to surface a documented
@@ -49,13 +47,14 @@ def main() -> int:
 
     CORPUS_PATH.parent.mkdir(exist_ok=True)
     records = []
-    with httpx.Client(base_url=BASE_URL, auth=(key, ""), timeout=30) as client:
+    with httpx.Client(base_url=STRIPE_BASE_URL, auth=(key, ""), timeout=30) as client:
         for seq, (name, method, path, body) in enumerate(CALLS):
             pair = {}
             for version in (VERSION_A, VERSION_B):
                 try:
                     pair[version] = record(client, version, name, method, path,
-                                           body, seq)
+                                           body, seq,
+                                           workflow="spike_version_pair")
                 except CaptureError as exc:
                     print(f"capture failed: {exc}")
                     return 1
@@ -69,10 +68,8 @@ def main() -> int:
             print("\n".join(shallow_diff(resp_a["body"], resp_b["body"]))
                   or "  (no top-level differences)")
 
-    with CORPUS_PATH.open("w") as f:
-        for rec in records:
-            f.write(json.dumps(rec, sort_keys=True) + "\n")
-    print(f"\nwrote {len(records)} records to {CORPUS_PATH}")
+    count = write(CORPUS_PATH, records)
+    print(f"\nwrote {count} records to {CORPUS_PATH}")
     return 0
 
 
