@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # A follow-up push cancels the superseded run, except on main, where every
 # run completes so the Test Optimization history stays whole.
