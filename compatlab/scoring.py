@@ -14,12 +14,17 @@ quietly dropped from the denominator, because a denominator that shrinks to
 fit the result is the main way a number like this gets dishonest.
 
 **What the schema diff said.** For each caught break, the baseline index is
-asked about the field on the endpoint, and the answer is one of three:
+asked about the field on the endpoint, and the answer is one of four:
 `reported` (an entry about that field's own contract, or the path's removal —
 a reader would have been warned), `named` (entries mention the field, but only
 to say the set of possible values or polymorphic branches grew, which cannot
-express a changed default), or `green` (nothing at all). Only `green` and
-`named` are misses, and they are counted separately.
+express a changed default), `green` (nothing at all), or `not-covered` (the
+baseline was never generated over that endpoint, because no captured call
+reaches it). Only `green` and `named` are misses, and they are counted
+separately. `not-covered` is not a miss and is not a green either: the
+baseline is scoped to the endpoints the corpus calls, so claiming a schema
+diff was silent about an endpoint it never read would be the same kind of
+unearned credit as scoring a break no scenario exercises (RC1-618 Stage 1).
 
 **The false-break rate.** Every finding classified `breaking` must be
 adjudicated in `scoring/adjudication.json` against the changelog for the span:
@@ -52,6 +57,7 @@ VERDICTS = (DOCUMENTED, UNDOCUMENTED, FALSE_BREAK)
 REPORTED = "reported"
 NAMED = "named"
 GREEN = "green"
+NOT_COVERED = "not-covered"
 
 # oasdiff rules that tell a reader something about *this field's own contract*:
 # it is gone, it can be null now, its type changed, the path is gone. A reader
@@ -147,14 +153,18 @@ GROUND_TRUTH: tuple[Break, ...] = (
     ),
     Break(
         id="M6",
-        summary="Checkout supports no-cost orders",
+        summary="Checkout `payment_method_collection` defaults to `if_required`",
         version="2023-08-16",
-        confirmed=False,
+        confirmed=True,
         workflows=(),
-        loci=(),
+        loci=("$.body.payment_method_collection", "$.status"),
         baseline_endpoint=("POST", "/v1/checkout/sessions"),
-        baseline_field="amount_total",
-        note="Changelog detail page still unread (open Phase 0 residue).",
+        baseline_field="payment_method_collection",
+        note=("Live-confirmed in RC1-618 Stage 1 and narrowed to the default "
+              "flip the detail page names: `always` -> `if_required` on a "
+              "`mode=payment` session create, plus a zero-total session going "
+              "400 -> 200. Both readable on create, so the completion blocker "
+              "is M5's alone. No scenario captures a Checkout Session yet."),
     ),
     Break(
         id="M7",
@@ -169,14 +179,20 @@ GROUND_TRUTH: tuple[Break, ...] = (
     ),
     Break(
         id="M8",
-        summary="Partial invoice payment semantics",
+        summary="Invoice `amount_paid` reflects out-of-band payments",
         version="2025-03-31.basil",
-        confirmed=False,
+        confirmed=True,
         workflows=(),
-        loci=(),
-        baseline_endpoint=("POST", "/v1/invoices"),
+        loci=("$.body.amount_paid", "$.body.amount_remaining"),
+        baseline_endpoint=("GET", "/v1/invoices"),
         baseline_field="amount_paid",
-        note="Needs a billing-boundary crossing; test clocks deferred (ADR 0003 D8).",
+        note=("Live-confirmed in RC1-618 Stage 1 and narrowed: the entry's "
+              "breaking list is removed and added fields, all schema-visible, "
+              "and the one behavioral line is `amount_paid` now counting an "
+              "out-of-band payment (0 -> 2000, with `amount_remaining` "
+              "2000 -> 0). Needs no test clock — the groomed Stage 4 premise "
+              "of a billing-boundary crossing came from the title alone. No "
+              "scenario pays an invoice yet."),
     ),
 )
 
@@ -234,8 +250,18 @@ def evidence(report: DiffReport, item: Break) -> list[Finding]:
 
 
 def baseline_verdict(index: BaselineIndex, item: Break) -> tuple[str, dict[str, int]]:
-    """What the schema diff said about this break: reported, named, or green."""
+    """What the schema diff said: reported, named, green, or not-covered.
+
+    `not-covered` comes first because the other three all read an absence of
+    entries as evidence, and an endpoint outside the baseline's scope has no
+    entries for a reason that has nothing to do with the spec. Before
+    RC1-618 Stage 1 this returned `green` for M5, M6 and M7 — three rows
+    crediting the schema diff with silence on `POST /v1/checkout/sessions`
+    and `GET /v1/account`, neither of which the baseline was generated over.
+    """
     method, path = item.baseline_endpoint
+    if not index.covers_endpoint(method, path):
+        return NOT_COVERED, {}
     path_level = index.path_level(method, path)
     if any(rule in CONTRACT_RULES for rule in path_level):
         return REPORTED, path_level
@@ -389,6 +415,15 @@ def render(card: dict[str, Any]) -> str:
             f"| {'yes' if item['exercised'] else 'no'} "
             f"| {'yes' if item['caught'] else 'no'} | {item['baseline']} |"
         )
+    lines += [
+        "",
+        "Schema diff column: `reported` means an entry about that field's own "
+        "contract; `named` means the field is mentioned but not its behavior; "
+        "`green` means nothing at all; `not-covered` means the baseline was "
+        "never generated over that endpoint, because no captured call reaches "
+        "it. A `not-covered` row is a statement about this corpus, not about "
+        "Stripe's spec.",
+    ]
     lines += [
         "", "## Findings", "",
         f"- Steps compared: {card['findings']['steps_compared']}, "

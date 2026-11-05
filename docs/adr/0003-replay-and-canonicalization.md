@@ -113,6 +113,16 @@ scenario that needs a renewal to occur — which is also what would raise
 ground-truth coverage past M5 and M8, and is therefore a corpus-coverage task
 rather than a replay task.
 
+**Amended by RC1-618 Stage 1.** The decision stands; one of its two cited
+triggers does not. M8 was a title-only inventory entry when this was written,
+and reading its detail page showed it is about partial and out-of-band
+invoice payments, not a billing boundary: the live observable is
+`invoice.amount_paid` after `POST /v1/invoices/{id}/pay`, six synchronous
+calls and no clock (docs/m6-m8-probe.md). Exercising M8 therefore does not
+reach the replay engine at all. Test clocks keep waiting for a scenario that
+genuinely needs wall-clock progression, and no longer have a coverage story
+pointing at them.
+
 ## D9. An encoded leak, found by replay
 
 Canonicalization flagged `receipt_url` as noise, and reading why exposed a

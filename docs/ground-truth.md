@@ -18,14 +18,16 @@ Classification:
 Exercisable = replayable from a bare test-mode sandbox (no Issuing, Terminal,
 Vault & Forward, or client-side surface). Entries marked *(title-only)* were
 inventoried from changelog titles; their detail pages still need reading
-before final scoring (open Phase 0 work).
+before final scoring (open Phase 0 work). The two that carried an M number —
+2023-08-16 #2 and basil #11 — were read and probed in RC1-618 Stage 1 and no
+longer carry the marker; see docs/m6-m8-probe.md.
 
 ## 2023-08-16
 
 | # | Change | Objects | Class |
 |---|--------|---------|-------|
 | 1 | Automatic payment methods enabled by default | PaymentIntent, SetupIntent | BEHAVIORAL |
-| 2 | One-time payments in Checkout support no-cost orders *(title-only)* | Checkout Session | BEHAVIORAL |
+| 2 | One-time payments in Checkout support no-cost orders: `payment_method_collection` default moves `always` -> `if_required`. **Live-verified in RC1-618:** the default flip is readable on a `mode=payment` session create, and a zero-total session goes 400 -> 200 | Checkout Session | BEHAVIORAL |
 | 3 | Platform-scoped rendering for select PaymentMethod fingerprints | PaymentMethod | BEHAVIORAL |
 | 4 | Specific error codes for failed Klarna payments | PaymentIntent, Checkout | BOTH |
 | 5 | New director verification error codes | Account | BOTH |
@@ -74,7 +76,7 @@ No exercisable behavioral entries.
 | 8 | Legacy usage-based billing removed *(title-only)* | Billing | SCHEMA (provisional) |
 | 9 | InvoiceItem/InvoiceLineItem top-level price fields replaced by `pricing` | Invoice | SCHEMA |
 | 10 | Top-level tax properties replaced by `total_taxes`/`taxes` | Invoice, CreditNote | SCHEMA |
-| 11 | Multiple (partial) payments on invoices *(title-only)* | Invoice | BOTH |
+| 11 | Multiple (partial) payments on invoices. Removed pointers (`payment_intent`, `charge`, `paid`, `paid_out_of_band`, `application_fee_amount`, `transfer_data`) and the new `payments`/`amount_overpaid`/`confirmation_secret` fields are all schema-visible; the behavioral half is one line, `amount_paid` now counting an out-of-band payment. **Live-verified in RC1-618** | Invoice | BOTH |
 | 12 | Reason code for authorizations while Stripe unavailable *(title-only)* | Issuing | SCHEMA |
 | 13 | Webhook Accept headers specify JSON for Issuing authorizations *(title-only)* | Issuing webhooks | BEHAVIORAL |
 | 14 | `expired` status added for Issuing Authorizations *(title-only)* | Issuing | BOTH |
@@ -99,11 +101,23 @@ spike (docs/spike-findings.md) live-verified entries where noted.
 | 3 | Partial capture/cancel creates no Refund | basil | **confirmed live** |
 | 4 | `GET /v1/invoices/upcoming` removed outright (both call shapes 404) | basil | **confirmed live** |
 | 5 | Checkout Session create/complete semantics (observable: no invoice until `complete`) | basil | pending (full flow needs a completed session) |
-| 6 | Checkout no-cost orders | 2023-08-16 | pending *(title-only)* |
+| 6 | Checkout `payment_method_collection` defaults to `if_required` (observables: `$.body.payment_method_collection`, and `$.status` on a zero-total session) | 2023-08-16 | **confirmed live**, not exercised |
 | 7 | Statement descriptor auto-population | 2023-10-16 | pending (needs Connect test account) |
-| 8 | Partial invoice payment semantics | basil | pending *(title-only)* |
+| 8 | Invoice `amount_paid` reflects out-of-band payments (observables: `$.body.amount_paid`, `$.body.amount_remaining`) | basil | **confirmed live**, not exercised |
 
-**Provisional M = 8 (4 confirmed live, 4 pending exercise).**
+**M = 8 (6 confirmed live, 4 exercised and caught, 2 confirmed but not yet
+exercised, 2 pending exercise).**
+
+RC1-618 Stage 1 read the two title-only M entries' detail pages and probed
+them on both versions. Both survived and both narrowed, so M did not move:
+M6's break is the `payment_method_collection` default flip rather than the
+no-cost order itself, and M8's is the `amount_paid` aggregate rather than
+partial-payment support, whose whole removed-and-added-field surface is
+schema-visible. Confirmed is not exercised: no scenario captures a Checkout
+Session or pays an invoice, so both stay out of the numerator *and* out of the
+exercised denominator, and a test asserts that a confirmed break with no
+declared workflow cannot be reported as caught. Full probe record, including
+the two Stage 4 assumptions it retired, in docs/m6-m8-probe.md.
 
 **Phase 3 (RC1-608) scored this inventory mechanically.** All four
 live-confirmed breaks are caught by the differ; the four pending entries are
@@ -122,6 +136,15 @@ So three of the four caught breaks had no usable warning in a schema diff that
 reported 12,313 breaking changes on the same twenty endpoints. M4 is the one
 with a schema-visible half, and is counted as caught by both. Scorecard in
 docs/behavioral-diff-report.md; methodology in ADR 0004.
+
+For the unexercised entries the scorecard now prints a fourth verdict,
+`not-covered`, rather than `green`. The baseline's path scope is derived from
+the endpoints the corpus calls, so `POST /v1/checkout/sessions` (M5, M6) and
+`GET /v1/account` (M7) were never diffed at all, and reporting them as green
+credited the schema diff with a silence it was never asked for. M8's `green`
+is a real one: `amount_paid` and `amount_remaining` are not named once in the
+702 entries `oasdiff` produces for `GET /v1/invoices`, which does carry
+`paid` and `payment_intent` entries.
 
 M3 and M4 were confirmed by the RC1-607 dual replay: partial capture produced
 a 3,000-cent Refund on A and none on basil (`count: 1 -> 0`,
