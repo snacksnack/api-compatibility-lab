@@ -10,13 +10,17 @@ HTTP status, silent truncation, and undocumented enum values. Every one of
 those breaks real integration code while the schema diff reports green.
 Behavior, not schema, is the contract customers actually depend on.
 
-**Status: Phase 6 (RC1-611) — evals and instrumentation.** Traffic is
+**Status: Phase 7 (RC1-612) — every groomed phase built.** Traffic is
 captured, sanitized, replayed against both versions, classified, scored,
 mapped onto the customer workflows it affects, and each affected read is
 pinned by a generated test that passes on the old version and fails on the
-new one. Those six results are now scored as an eval suite on every run and
-published as Datadog gauges behind a dashboard and three monitors. The
-portfolio writeup is Phase 7. Nothing here is a finished tool yet.
+new one. Those six results are scored as an eval suite on every run and
+published as Datadog gauges behind a dashboard and three monitors, and the
+whole thing is papered as an engagement in
+[`docs/engagement.md`](docs/engagement.md). It is still not a finished tool:
+the corpus exercises four of the eight documented breaks in the inventory
+(RC1-618), and the integration inventory is declared by the customer rather
+than discovered from their code.
 
 > **Caught 4 of the 4 documented behavioral breaks the corpus exercises** (8
 > in the inventory). The schema-diff baseline gave no usable warning on three
