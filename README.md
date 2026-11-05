@@ -51,6 +51,9 @@ Stripe's own published OpenAPI snapshots at pinned commits.
 
 - [`docs/ground-truth.md`](docs/ground-truth.md) — the documented changes in
   the span, classified schema-visible vs behavioral, and the provisional M.
+- [`docs/engagement.md`](docs/engagement.md) — the same work papered as a
+  customer engagement: statement of work, what the schema diff said, what the
+  replay found, what the customer keeps, and what none of it claims.
 - [`docs/adr/0001-phase-0-decisions.md`](docs/adr/0001-phase-0-decisions.md) —
   version pair, baseline, stack, and corpus-format decisions.
 - [`docs/adr/0002-redaction-and-corpus.md`](docs/adr/0002-redaction-and-corpus.md) —
@@ -66,9 +69,6 @@ Stripe's own published OpenAPI snapshots at pinned commits.
 - [`docs/adr/0006-regression-test-generation.md`](docs/adr/0006-regression-test-generation.md) —
   the three outcomes of a pinned test, why the offline run is not evidence,
   and what the certification gate refuses.
-- [`docs/engagement.md`](docs/engagement.md) — the same work papered as a
-  customer engagement: statement of work, what the schema diff said, what the
-  replay found, what the customer keeps, and what none of it claims.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.
