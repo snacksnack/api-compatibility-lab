@@ -9,6 +9,7 @@ from compatlab.canonical import (
     canonicalize,
     diff_paths,
     run_start,
+    without_timing,
 )
 
 ORIGIN = 1_793_800_000
@@ -172,3 +173,18 @@ def test_a_duration_is_carried_through_uncanonicalized():
 
 def test_a_record_without_a_duration_carries_no_timing_key():
     assert "duration_ms" not in canonical_record(rec("s", {}), {}, ORIGIN)
+
+
+def test_the_control_comparison_drops_the_wall_clock_duration():
+    """RC1-618: the control is not allowed to fail on timing.
+
+    `canonical_record` carries `duration_ms` through for the differ's timing
+    axis. The A/A control diffs canonical records directly, so without this
+    every step of a corpus that carries the field mismatches on every run.
+    """
+    record = {"workflow": "w", "step": "s", "status": 200, "duration_ms": 210.4}
+    assert "duration_ms" not in without_timing(record)
+    assert without_timing(record) == {"workflow": "w", "step": "s", "status": 200}
+    faster = {**record, "duration_ms": 156.5}
+    assert diff_paths(without_timing(record), without_timing(faster)) == []
+    assert diff_paths(record, faster) == ["$.duration_ms: 210.4 != 156.5"]

@@ -57,6 +57,7 @@ Everything derived here is re-checked against the replay record by
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from compatlab.findings import BENIGN, Finding
 from compatlab.loci import touches
@@ -72,14 +73,21 @@ from compatlab.workflows import (
 
 BLOCKS = "blocks"
 CORRUPTS = "corrupts"
+UNBLOCKS = "unblocks"
 DEGRADES = "degrades"
 TOLERATES = "tolerates"
 # Worst first: a workflow's verdict is the worst consequence over its impacts.
-CONSEQUENCES = (BLOCKS, CORRUPTS, DEGRADES, TOLERATES)
+# `unblocks` sits below `corrupts` and above `degrades`: nothing the client
+# reads is wrong, so it is not a corruption, but a code path that could not
+# previously execute now does, which a reader has to act on and a cosmetic
+# difference is not.
+CONSEQUENCES = (BLOCKS, CORRUPTS, UNBLOCKS, DEGRADES, TOLERATES)
 CONSEQUENCE_ORDER = {name: i for i, name in enumerate(CONSEQUENCES)}
 CONSEQUENCE_SUMMARY = {
     BLOCKS: "the sequence stops; the customer sees an error",
     CORRUPTS: "the sequence finishes and is silently wrong",
+    UNBLOCKS: ("a call the old version rejected now succeeds, so a path the "
+               "client could not previously reach is live"),
     DEGRADES: "visibly different, but nothing decided or stored is wrong",
     TOLERATES: "additive; the declared use cannot notice it",
 }
@@ -147,20 +155,17 @@ CONSEQUENCE_TABLE: dict[tuple[str, str], str] = {
 }
 
 # Rules about the call rather than about a value in it. The client never gets
-# to the read, so the declared use cannot soften the consequence.
-BLOCKING_RULES = ("step-missing", "status-class-changed")
+# to the read, so the declared use cannot soften the consequence. Named for
+# what they are about rather than for one of their outcomes: a changed status
+# class does not always block (see `_status_class_consequence`).
+CALL_LEVEL_RULES = ("step-missing", "status-class-changed")
 # The pseudo-use on a call-level impact: the call stopped working and this
 # workflow depends on it, whether or not it declared a read on the response.
 # Not a value a declaration may name — `USES` is what a declaration may say.
 CALL = "call"
-BLOCKING_REASON = {
-    "step-missing": (
-        "this call could not be made at all against the new version, so the "
-        "workflow stops here"),
-    "status-class-changed": (
-        "this call returned {a} on the old version and {b} on the new one; the "
-        "workflow stops here"),
-}
+STEP_MISSING_REASON = (
+    "this call could not be made at all against the new version, so the "
+    "workflow stops here")
 
 REASON = {
     (LOSS, REQUEST_INPUT): (
@@ -368,11 +373,41 @@ class ImpactReport:
         }
 
 
+def _failed(status: Any) -> bool:
+    """Is this recorded status an error? Tolerant of int or str."""
+    try:
+        return int(status) >= 400
+    except (TypeError, ValueError):
+        return False
+
+
+def _status_class_consequence(finding: Finding) -> tuple[str, str]:
+    """A changed status class, read in the direction it actually moved.
+
+    RC1-618: the Checkout zero-total create returns 400 on `2022-11-15` and
+    200 on basil. This function used to be a constant, so the customer-facing
+    report said the workflow stopped at a call that had just started working
+    — and `compatlab.verify` confirmed the claim, because its own independent
+    check asked only whether the class had changed, not which way. Two checks,
+    one shared assumption; the second one is only independent of the things it
+    was written to doubt.
+    """
+    if _failed(finding.a) and not _failed(finding.b):
+        return UNBLOCKS, (
+            f"this call returned {finding.a} on the old version and "
+            f"{finding.b} on the new one; a request the old version rejected "
+            f"now succeeds, so a path this workflow could not reach is live")
+    return BLOCKS, (
+        f"this call returned {finding.a} on the old version and {finding.b} "
+        f"on the new one; the workflow stops here")
+
+
 def consequence_of(finding: Finding, effect: str, read: Read) -> tuple[str, str]:
     """The derived consequence and the sentence that explains it."""
-    if finding.rule in BLOCKING_RULES:
-        return BLOCKS, BLOCKING_REASON[finding.rule].format(
-            a=finding.a, b=finding.b)
+    if finding.rule == "step-missing":
+        return BLOCKS, STEP_MISSING_REASON
+    if finding.rule == "status-class-changed":
+        return _status_class_consequence(finding)
     template = REASON[(effect, read.use)]
     return CONSEQUENCE_TABLE[(effect, read.use)], template.format(
         note=read.note.rstrip("."), feeds=read.feeds or "")
@@ -395,7 +430,7 @@ def map_workflow(workflow: Workflow, findings: list[Finding]) -> WorkflowImpact:
             effect = effect_of(finding)
             if effect is None:
                 continue
-            about_the_call = finding.rule in BLOCKING_RULES
+            about_the_call = finding.rule in CALL_LEVEL_RULES
             hits = [
                 read for read in call.reads
                 if about_the_call or touches(finding.locus, read.locus)
@@ -452,7 +487,8 @@ def map_findings(workflows: list[Workflow], findings: list[Finding], *,
 def pins(report: ImpactReport) -> list[dict]:
     """The regression-test specification Phase 5 compiles.
 
-    One pin per place a declared read is blocked or corrupted: the step to
+    One pin per place a declared read is blocked, corrupted or newly
+    reachable: the step to
     replay, the locus to assert on, what version A returned there, and what
     version B returned instead. Phase 4 states what must be pinned; RC1-610
     turns each of these into an executable test and verifies the defining
@@ -462,7 +498,7 @@ def pins(report: ImpactReport) -> list[dict]:
     seen: dict[str, list[str]] = {}
     for workflow in report.ordered():
         for impact in workflow.impacts:
-            if impact.consequence not in (BLOCKS, CORRUPTS):
+            if impact.consequence not in (BLOCKS, CORRUPTS, UNBLOCKS):
                 continue
             key = f"{impact.corpus} {impact.finding_locus}"
             names = seen.setdefault(key, [])

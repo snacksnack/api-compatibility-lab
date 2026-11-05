@@ -34,7 +34,7 @@ import httpx
 from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B, impact, scoring
 from compatlab import baseline as bl
 from compatlab import workflows as wf
-from compatlab.canonical import canonical_side, diff_paths
+from compatlab.canonical import canonical_side, diff_paths, without_timing
 from compatlab.capture import capture_all, seed_known
 from compatlab.certify import (
     RunError,
@@ -201,7 +201,7 @@ def _mismatches(side_one: list[dict], side_two: list[dict]) -> dict[str, list[st
         if key not in one or key not in two:
             out[name] = [f"present on only one side ({'A' if key in one else 'B'})"]
             continue
-        diffs = diff_paths(one[key], two[key])
+        diffs = diff_paths(without_timing(one[key]), without_timing(two[key]))
         if diffs:
             out[name] = diffs
     return out

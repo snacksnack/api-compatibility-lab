@@ -1,0 +1,60 @@
+{
+  "workflow": "invoice_out_of_band_payment",
+  "description": "Invoice a customer, finalize it, mark it paid outside Stripe, then read what was collected.",
+  "targets": ["M8"],
+  "note": "basil's multiple-payments entry is mostly schema — six removed Invoice fields and three added ones, all of which an OpenAPI diff reports. One line of it is behavioral: amount_paid now reflects out-of-band payments. The underlying invoice_payment records 2000 on both versions, so the money is in the same place; it is the aggregate a reconciliation job reads that disagrees (docs/m6-m8-probe.md).",
+  "steps": [
+    {
+      "step": "create_invoice_customer",
+      "method": "POST",
+      "path": "/v1/customers",
+      "body": {
+        "name": "Marguerite Okonkwo",
+        "email": "marguerite.okonkwo@example.invalid",
+        "description": "Compatibility Lab out-of-band billing customer"
+      }
+    },
+    {
+      "step": "create_draft_invoice",
+      "method": "POST",
+      "path": "/v1/invoices",
+      "body": {
+        "customer": "{{create_invoice_customer.id}}",
+        "collection_method": "send_invoice",
+        "days_until_due": "30"
+      },
+      "note": "send_invoice, not charge_automatically: an invoice paid outside Stripe is one the customer was billed for and settled by wire or check."
+    },
+    {
+      "step": "add_invoice_item",
+      "method": "POST",
+      "path": "/v1/invoiceitems",
+      "body": {
+        "customer": "{{create_invoice_customer.id}}",
+        "invoice": "{{create_draft_invoice.id}}",
+        "amount": "2000",
+        "currency": "usd",
+        "description": "Annual platform fee"
+      },
+      "note": "Attached to the invoice by id rather than left pending. A pending item is not pulled into a draft invoice on either version, and an empty finalized invoice goes straight to paid with nothing owed — which looks exactly like a break that cannot be exercised."
+    },
+    {
+      "step": "finalize_invoice",
+      "method": "POST",
+      "path": "/v1/invoices/{{create_draft_invoice.id}}/finalize",
+      "note": "The positive control for this scenario: amount_due is 2000 on both versions here, before any payment, so a later absence of difference cannot be a broken scenario."
+    },
+    {
+      "step": "pay_invoice_out_of_band",
+      "method": "POST",
+      "path": "/v1/invoices/{{create_draft_invoice.id}}/pay",
+      "body": {"paid_out_of_band": "true"}
+    },
+    {
+      "step": "retrieve_invoice_after_payment",
+      "method": "GET",
+      "path": "/v1/invoices/{{create_draft_invoice.id}}",
+      "note": "The observable: amount_paid is 0 on A and 2000 on basil, amount_remaining inverts with it, and neither field is named once in the 702 breaking entries oasdiff produces for this object."
+    }
+  ]
+}

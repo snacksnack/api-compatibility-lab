@@ -85,6 +85,46 @@ to decide whether a given `name` is a person's. Coarse fields (`city`,
 `state`, `country`) are left alone; `country` in particular changes Stripe's
 behavior, and redacting it would corrupt the comparison the corpus exists for.
 
+## D4a. A field name enumerated is a class left open (RC1-618)
+
+`CREDENTIALS` in `policies.py` lists the fields known to carry an
+account-bearing URL: `receipt_url`, `hosted_invoice_url`, `invoice_pdf`,
+`request_log_url`. Every one was added because a real payload carried it. That
+makes the rule a list of instances, and a list of instances is only complete
+until the corpus reaches an endpoint nobody had captured yet.
+
+Widening the corpus to Checkout Sessions reached one. The session's hosted
+page arrives on a field called plain `url`, carrying the session key in its
+`#fid…` fragment — a link that is itself the capability to pay the session. It
+survived `redact` untouched and `scan` reported the record clean, so the first
+Checkout capture would have committed it to a public repo. The same failure as
+the PR #1 leak (docs/spike-findings.md finding 5), one endpoint family later.
+
+A key rule could not have closed it. Keys match on underscore tails
+(`core.tails`), so a rule on `url` also swallows `success_url`, `cancel_url`
+and `return_url` — values that are behavioral signal rather than data, and
+that D2 deliberately protects. The fix is a **value detector matched on the
+host**: `checkout|pay|billing|invoice|connect|verify|files` under
+`stripe.com`, dropped whole, ordered first so no narrower detector nibbles at
+the middle of a capability URL and leaves the rest. `docs.stripe.com` and bare
+`stripe.com` are excluded on purpose: they appear in error-message hint text,
+which the differ reads on its `error_semantics` axis.
+
+Two consequences worth stating rather than discovering later:
+
+- **The dropped value is a blind spot.** `[redacted]` on both sides means the
+  differ can never report a difference on a hosted URL — including one going
+  null. `free_sample_fulfillment` declares a read on that exact field and the
+  declaration says so, which is the honest place for it.
+- **The key rules stay**, because they name fields on objects whose host this
+  detector would not see, and because two independent mechanisms covering the
+  same leak is the arrangement D3 is built on.
+
+A field the policy was never written for was still handled correctly in the
+same payload: `branding_settings.display_name` matched the `name` key rule on
+its underscore tail and was surrogated. That is the design working. The URL is
+the case where it could not.
+
 ## D5. Known values, because a name has no shape
 
 Neither key rules nor detectors cover the case the first captured corpus

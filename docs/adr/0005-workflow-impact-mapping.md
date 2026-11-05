@@ -110,11 +110,12 @@ quiet way the mapping stops reporting a whole class of difference.
 
 ## D4. Two rules are about the call, not about a value in it
 
-`step-missing` and `status-class-changed` override the table and always block,
-they apply to **every** read declared on that call rather than only the ones
-whose locus they match, and they produce an impact even on a call with no
-declared reads at all. All three follow from one fact: when the request itself
-stops working, the client never reaches any field.
+`step-missing` and `status-class-changed` override the table, they apply to
+**every** read declared on that call rather than only the ones whose locus
+they match, and they produce an impact even on a call with no declared reads
+at all. All three follow from one fact: when the request itself behaves
+differently, the client's path through the workflow changes before any field
+is read.
 
 This was wrong in the first version, which matched them by locus like
 everything else. A `status-class-changed` finding sits at `$.status`, which
@@ -123,6 +124,40 @@ call went 200 to 404 — came out as *corrupted at call 1* with the 404 reported
 nowhere. The whole workflow had stopped and the report said it was fine. The
 live data caught it; no unit test would have, because the fixture would have
 been written with the same wrong assumption.
+
+**Amended by RC1-618: a changed status class is read in the direction it
+moved.** These two rules used to return `blocks` unconditionally. The Checkout
+zero-total create returns 400 on `2022-11-15` and 200 on basil — a request the
+old version rejected that the new one accepts — and the customer-facing report
+said *the workflow stops here* about a call that had just started working. The
+headline counted it among the workflows that "stop outright".
+
+Two things about how that survived are worth more than the fix:
+
+- **`compatlab.verify` confirmed it.** The checker is independent of the rule
+  table by construction (D6), and it still agreed, because its own question
+  was "did the status class change" rather than "did it change the way the
+  claim says". An independent check is only independent of the assumptions it
+  was written to doubt, and both pieces of code shared this one.
+- **Every existing test passed.** All of them used `a="200", b="404"`. The
+  fixtures encoded the same assumption as the code, which is the exact
+  sentence this decision's own first paragraph already had on the record for
+  the locus-matching bug. The lesson did not travel from one direction of a
+  status change to the other.
+
+The fix adds a fifth consequence rather than reusing one: `unblocks` — "a call
+the old version rejected now succeeds, so a path the client could not
+previously reach is live". It ranks below `corrupts` and above `degrades`:
+nothing the client reads is wrong, so it is not a corruption, but a code path
+that could not execute now does, which is more than cosmetic. `step-missing`
+still always blocks, because a call that cannot be made at all has only one
+direction. A pin is still generated: `status == 400` holds on A and fails on
+B, which is the defining property, whichever way the class moved.
+
+`free_sample_fulfillment` is reported CORRUPTED on its
+`payment_method_collection` reads and carries the UNBLOCKED call as a separate
+impact, which is the honest shape: the workflow's verdict is its worst
+consequence, and the newly reachable path is not that.
 
 ## D5. The inventory is what resolves a `risky` finding
 
