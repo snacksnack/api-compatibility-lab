@@ -10,11 +10,12 @@ HTTP status, silent truncation, and undocumented enum values. Every one of
 those breaks real integration code while the schema diff reports green.
 Behavior, not schema, is the contract customers actually depend on.
 
-**Status: Phase 4 (RC1-609) — affected-workflow mapping and the impact
-report.** Traffic is captured, sanitized, replayed against both versions,
-classified, scored, and now mapped onto the customer workflows it affects.
-Generating executable regression tests from the pins is Phase 5. Nothing here
-is a finished tool yet.
+**Status: Phase 5 (RC1-610) — regression-test generation.** Traffic is
+captured, sanitized, replayed against both versions, classified, scored,
+mapped onto the customer workflows it affects, and each affected read is now
+pinned by a generated test that passes on the old version and fails on the
+new one. Evals, dashboards and the portfolio writeup are Phases 6 and 7.
+Nothing here is a finished tool yet.
 
 > **Caught 4 of the 4 documented behavioral breaks the corpus exercises** (8
 > in the inventory). The schema-diff baseline gave no usable warning on three
@@ -28,10 +29,16 @@ is a finished tool yet.
 > impact claims, all 13 confirmed against the replay record by a checker that
 > does not read the classifier's rule table.
 >
+> **11 of 11 generated regression tests pass on `2022-11-15` and fail on
+> `2025-03-31.basil`**, certified by a live double run — one test per place a
+> declared customer read is blocked or corrupted, each failing on its own
+> assertion rather than on a step the replay never reached.
+>
 > Scorecard: [`docs/behavioral-diff-report.md`](docs/behavioral-diff-report.md).
 > Impact report: [`docs/impact-report.md`](docs/impact-report.md), and the
 > self-contained page a customer would be sent,
-> [`docs/impact-report.html`](docs/impact-report.html).
+> [`docs/impact-report.html`](docs/impact-report.html). Pinned tests:
+> [`docs/regression-tests.md`](docs/regression-tests.md).
 
 ## Ground truth
 
@@ -56,6 +63,9 @@ Stripe's own published OpenAPI snapshots at pinned commits.
 - [`docs/adr/0005-workflow-impact-mapping.md`](docs/adr/0005-workflow-impact-mapping.md) —
   why the integration inventory is declared, the consequence table, and what
   the mapping-precision number does and does not mean.
+- [`docs/adr/0006-regression-test-generation.md`](docs/adr/0006-regression-test-generation.md) —
+  the three outcomes of a pinned test, why the offline run is not evidence,
+  and what the certification gate refuses.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.
@@ -73,6 +83,9 @@ uv run compatlab diff --why     # classify the pairs -> findings/findings.jsonl
 uv run compatlab baseline       # regenerate the oasdiff baseline (network + docker)
 uv run compatlab score --out    # caught N of M, false-break rate, the report
 uv run compatlab impact --out --html   # map findings onto customer workflows
+uv run compatlab pin generate   # compile the pins into pinned/
+uv run compatlab pin certify    # run the pinned suite live on both versions
+uv run compatlab pin check --out  # offline gate + the regression-test report
 ```
 
 `capture` runs the workflows in [`scenarios/`](scenarios) against version A,
@@ -241,11 +254,65 @@ subscription_renewal_billing — BLOCKED
 
 Each blocked or corrupted read becomes a pin in
 [`pins/pins.jsonl`](pins/pins.jsonl): the step to replay, the locus, the
-assertion, and both versions' values. Phase 4 states what must be pinned;
-RC1-610 compiles each into an executable test and verifies that it fails on
-the new version and passes on the old. Details, including what the precision
+assertion, and both versions' values. Details, including what the precision
 number does not mean, in
 [ADR 0005](docs/adr/0005-workflow-impact-mapping.md).
+
+## The pinned tests
+
+A pin is a specification; `compatlab pin generate` compiles it into
+[`pinned/test_pinned_behavior.py`](pinned/test_pinned_behavior.py), which is
+written to be read rather than to be clever:
+
+```python
+def test_partial_capture_reconcile_retrieve_charge_after_partial__data_0_amount_refunded(canonical):
+    """$.body.data[0].amount_refunded equals 3000.
+
+    nightly_refund_reconciliation: corrupts. Rule `value-changed`, axis `value`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.data[0].amount_refunded`
+    returned 0.
+    The client reads `$.body.data[].amount_refunded`.
+    Assertion: a value small enough to read, pinned exactly.
+    Caveat: list endpoint: may reflect account state accumulated between runs (ADR 0003 D7).
+    """
+    response = canonical("partial_capture_reconcile.retrieve_charge_after_partial")
+    assert value_at(response, "$.body.data[0].amount_refunded") == 3000
+```
+
+The defining property is not assertable from the repository, so it is run.
+`compatlab pin certify` replays the corpus against each version and runs the
+generated suite over the result, twice, and records what every test did:
+
+```
+11 of 11 pinned regression tests pass on 2022-11-15 and fail on 2025-03-31.basil
+```
+
+Three things keep that number from being easy.
+
+- **A pinned test has three outcomes, not two.** It can hold, it can break, or
+  the replay can never have reached its step — and only the middle one is a
+  pinned break. Workflows are sequences, and one that dies at its third call
+  turns every test behind it red without exercising a single pin, which is how
+  a count of "tests that failed on B" would read 11 of 11 off a run that
+  proved nothing.
+- **Fail-on-B is cheap; pass-on-A is the evidence.** Version A's traffic is
+  fetched after the pins were written, so a pin holding there is a statement
+  about the API rather than about the file it came from. The offline run
+  against the committed replay is circular by construction — the pins came
+  from those records — so it is labelled a compilation check and gates CI on
+  nothing more than that.
+- **The gate is strict in both directions.** `compatlab pin check` fails on a
+  suite that is not what the pins compile to, on a pin with no live
+  certification, on a certification made against a different assertion than
+  the file now holds, and on a certification entry naming a pin that no longer
+  exists. No count is published while any of that stands.
+
+The assertions run over canonical responses, which makes two of them
+deliberately relative: `current_period_end` is pinned as *about thirty days
+out*, not as a date that would be wrong tomorrow. Full reasoning in
+[ADR 0006](docs/adr/0006-regression-test-generation.md); the certified result,
+with each test's failure message on the new version, is
+[`docs/regression-tests.md`](docs/regression-tests.md).
 
 ## Sanitization
 

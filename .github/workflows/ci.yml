@@ -69,3 +69,13 @@ jobs:
       # against the replay record. Also offline.
       - name: Map findings onto customer workflows
         run: uv run python -m compatlab impact
+
+      # The Phase 5 gate, same shape again and also offline. It regenerates
+      # the pinned suite and fails on any drift (a hand-edited assertion
+      # inside a generated file), runs that suite against both committed
+      # replays, and refuses to publish the pass-on-A / fail-on-B count while
+      # any pin lacks a live certification or carries a stale one. The live
+      # double run that produces the certification needs a Stripe key, so it
+      # happens by hand and its record is what this step gates against.
+      - name: Check the pinned regression tests
+        run: uv run python -m compatlab pin check

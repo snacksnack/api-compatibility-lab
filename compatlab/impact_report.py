@@ -227,10 +227,13 @@ def render(report: ImpactReport, verification: Verification,
         "## What must be pinned",
         "",
         f"{len(pin_list)} regression test(s), one per place a declared read is "
-        f"blocked or corrupted. Phase 4 states what must be pinned; RC1-610 "
-        f"compiles each of these into an executable test and verifies the "
-        f"defining property, that it fails on {report.version_b} and passes on "
-        f"{report.version_a}.",
+        f"blocked or corrupted. This section states what must be pinned; the "
+        f"tests themselves are generated from it and run both ways against "
+        f"the API, each one passing on {report.version_a} and failing on "
+        f"{report.version_b} — the suite is "
+        f"[`pinned/test_pinned_behavior.py`](../pinned/test_pinned_behavior.py) "
+        f"and the result is "
+        f"[`docs/regression-tests.md`](regression-tests.md).",
         "",
         "| Call | Assert | Workflows |",
         "|------|--------|-----------|",

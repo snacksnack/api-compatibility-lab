@@ -1,4 +1,4 @@
-"""`compatlab capture|scan|coverage|control|replay|diff|baseline|score|impact`.
+"""`compatlab capture|scan|coverage|control|replay|diff|baseline|score|impact|pin`.
 
 Three of these matter to CI, and each exits non-zero on failure rather than
 printing a warning:
@@ -10,6 +10,12 @@ printing a warning:
 - `impact` refuses to publish a workflow-mapping precision while any claim is
   unconfirmed against the replay record, and fails outright on an integration
   inventory that does not match the captured traffic.
+- `pin check` regenerates the pinned suite and fails on any drift, runs it
+  against both committed replays, and refuses to publish the pass-on-A /
+  fail-on-B count while any pin lacks a live certification.
+
+`pin certify` is the other half of that and runs by hand, because it is the
+only command here that has to call the API twice to mean anything.
 
 `baseline` is the odd one out: it needs the network and a container runtime,
 so it is run by hand and its output committed. Everything else works offline
@@ -24,22 +30,34 @@ import pathlib
 import sys
 
 import httpx
-from dotenv import dotenv_values
 
 from compatlab import STRIPE_BASE_URL, VERSION_A, VERSION_B, impact, scoring
 from compatlab import baseline as bl
 from compatlab import workflows as wf
 from compatlab.canonical import canonical_side, diff_paths
 from compatlab.capture import capture_all, seed_known
+from compatlab.certify import (
+    RunError,
+    certify,
+    gate,
+    load_certification,
+    run_suite,
+    write_certification,
+)
+from compatlab.certify import headline as pin_headline
+from compatlab.codegen import GENERATED_PATH, render_module
 from compatlab.corpus import files, read, validate, write
 from compatlab.coverage import GROUND_TRUTH_M, render, summarize
 from compatlab.differ import diff_pairs, sides
 from compatlab.findings import SEVERITIES, Finding
 from compatlab.impact_html import render_html
 from compatlab.impact_report import render as render_impact
+from compatlab.pin_report import render as render_pins
+from compatlab.pinning import CERTIFICATION_PATH, compile_all, load_pins
 from compatlab.redaction import STRIPE_POLICY, Policy
 from compatlab.replay import pair, replay_corpus
 from compatlab.scenarios import SCENARIO_DIR, load_all
+from compatlab.transport import MissingKey, stripe_key
 from compatlab.verify import ground_truth_coverage, verify
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -55,6 +73,10 @@ WORKFLOW_DIR = ROOT / "workflows"
 PINS_PATH = ROOT / "pins" / "pins.jsonl"
 IMPACT_PATH = ROOT / "docs" / "impact-report.md"
 IMPACT_HTML_PATH = ROOT / "docs" / "impact-report.html"
+CERTIFICATION = ROOT / CERTIFICATION_PATH
+SUITE_PATH = ROOT / GENERATED_PATH
+PINNED_DIR = ROOT / "pinned"
+PIN_REPORT_PATH = ROOT / "docs" / "regression-tests.md"
 
 
 def _slug(version: str) -> str:
@@ -72,10 +94,10 @@ def seeded_policy() -> Policy:
 
 def _stripe_key() -> str:
     """Test-mode key from .env, or exit. A live key is refused outright."""
-    key = dotenv_values(ROOT / ".env").get("STRIPE_SECRET_KEY", "") or ""
-    if not key.startswith("sk_test_"):
-        sys.exit("STRIPE_SECRET_KEY missing or not a test-mode key (.env); refusing.")
-    return key
+    try:
+        return stripe_key(ROOT)
+    except MissingKey as exc:
+        sys.exit(str(exc))
 
 
 def cmd_capture(args: argparse.Namespace) -> int:
@@ -479,6 +501,164 @@ def cmd_impact(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pin_suite() -> tuple[list, str]:
+    """Compile the committed pins against the version-A record they came from.
+
+    The expected values come out of the replay record rather than the pin's
+    own truncated rendering of them, so an assertion is never built from
+    clipped JSON (ADR 0005 D7, retired here).
+    """
+    pins = load_pins(PINS_PATH)
+    if not pins:
+        sys.exit(f"no pins in {PINS_PATH}; run `compatlab impact` first")
+    side_a, _ = sides(_read_pairs(PAIRS_PATH))
+    tests = compile_all(pins, canonical_side(side_a))
+    return tests, render_module(tests, VERSION_A, VERSION_B)
+
+
+def cmd_pin_generate(args: argparse.Namespace) -> int:
+    tests, source = _pin_suite()
+    out = pathlib.Path(args.out)
+    before = out.read_text() if out.exists() else None
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(source)
+    for test in tests:
+        print(f"  {test.name}: {test.kind}")
+    verb = "unchanged" if before == source else "wrote"
+    print(f"{verb} {len(tests)} pinned test(s) in {out}")
+    return 0
+
+
+def cmd_pin_certify(args: argparse.Namespace) -> int:
+    """Run the generated suite live against both versions. The real check."""
+    tests, source = _pin_suite()
+    suite = pathlib.Path(args.suite)
+    if not suite.exists() or suite.read_text() != source:
+        sys.exit(f"{suite} is not what the pins compile to; run "
+                 f"`compatlab pin generate` first, then certify that.")
+    _stripe_key()  # fail before the first API call, not during the second run
+
+    print(f"certifying {len(tests)} pinned test(s) live: {VERSION_A} then "
+          f"{VERSION_B}")
+    try:
+        on_a = run_suite(ROOT, VERSION_A, tests=PINNED_DIR)
+        on_b = run_suite(ROOT, VERSION_B, tests=PINNED_DIR)
+    except RunError as exc:
+        sys.exit(f"the suite could not be run, so there is nothing to "
+                 f"certify:\n{exc}")
+
+    existing = (load_certification(CERTIFICATION) if CERTIFICATION.exists()
+                else None)
+    waivers = ({e.pin: e.waived for e in existing.entries if e.waived}
+               if existing else {})
+    certification = certify(tests, source, version_a=VERSION_A,
+                            version_b=VERSION_B, on_a=on_a, on_b=on_b,
+                            waivers=waivers)
+    for entry in sorted(certification.entries, key=lambda e: e.test):
+        print(f"  {entry.test}: {entry.on_a} on A, {entry.on_b} on B")
+        if entry.detail_b and entry.on_b != "broke":
+            print(f"      {entry.detail_b}")
+
+    leaks = _scan_records([certification.to_dict()], "certification",
+                          seeded_policy())
+    if leaks:
+        print(f"REFUSING to write the certification: {len(leaks)} finding(s) "
+              f"in it — a failure message quoted something unsanitized.")
+        for leak in leaks[:20]:
+            print(f"  {leak}")
+        return 1
+
+    write_certification(CERTIFICATION, certification)
+    print(f"wrote {CERTIFICATION}")
+    print(pin_headline(certification, VERSION_A, VERSION_B))
+    certified = len(certification.certified)
+    return 0 if certified == len(certification.claimable) else 1
+
+
+def _recorded_problems(tests: list, recorded: dict[str, dict],
+                       certification=None) -> list[str]:
+    """Does the offline run still say what the live certification says?
+
+    Compared against the certification rather than against a hard-coded
+    held/broke, so a waived pin — one whose behavior the upstream restored —
+    is checked against the outcome that was actually recorded for it, and the
+    offline gate does not contradict a waiver it cannot see.
+    """
+    certified = {e.test: e for e in certification.entries} if certification else {}
+    out = []
+    for label, version in (("a", VERSION_A), ("b", VERSION_B)):
+        for test in tests:
+            entry = certified.get(test.name)
+            expected = (getattr(entry, f"on_{label}") if entry
+                        else ("held" if label == "a" else "broke"))
+            outcome = recorded[label].get(test.name)
+            if outcome is None:
+                out.append(f"{test.name}: the recorded run on {version} "
+                           f"reported nothing")
+            elif outcome.verdict != expected:
+                out.append(
+                    f"{test.name}: the recorded run on {version} says "
+                    f"{outcome.verdict}, but the certification says "
+                    f"{expected} ({outcome.detail or 'no detail'})")
+    return out
+
+
+def cmd_pin_check(args: argparse.Namespace) -> int:
+    """The CI gate: regeneration drift, the recorded run, the certification."""
+    tests, source = _pin_suite()
+    problems: list[str] = []
+
+    suite = pathlib.Path(args.suite)
+    if not suite.exists():
+        problems.append(f"{suite} does not exist; run `compatlab pin generate`")
+    elif suite.read_text() != source:
+        problems.append(
+            f"{suite} is not what the pins compile to: regenerate it rather "
+            f"than editing a generated file by hand")
+    print(f"suite: {len(tests)} pinned test(s) from {len(tests)} pin(s)")
+
+    recorded: dict[str, dict] = {}
+    for label, version in (("a", VERSION_A), ("b", VERSION_B)):
+        path = CORPUS_DIR / f"replay-{_slug(version)}.jsonl"
+        try:
+            recorded[label] = run_suite(ROOT, version, tests=PINNED_DIR,
+                                        records=path)
+        except RunError as exc:
+            problems.append(f"the recorded run on {version} failed: {exc}")
+            recorded[label] = {}
+    print(f"recorded run: {len(recorded.get('a', {}))} test(s) on {VERSION_A}, "
+          f"{len(recorded.get('b', {}))} on {VERSION_B} "
+          f"(a compilation check, not evidence — the pins came from these "
+          f"records)")
+
+    if not CERTIFICATION.exists():
+        problems.append(
+            f"{CERTIFICATION} does not exist: a pinned test is only pinned "
+            f"once it has been run both ways against the API "
+            f"(`compatlab pin certify`)")
+        certification = None
+    else:
+        certification = load_certification(CERTIFICATION)
+        problems += gate(tests, certification, source, version_a=VERSION_A,
+                         version_b=VERSION_B)
+    problems += _recorded_problems(tests, recorded, certification)
+
+    if args.out and certification is not None:
+        pathlib.Path(args.out).write_text(render_pins(
+            tests, certification, recorded, version_a=VERSION_A,
+            version_b=VERSION_B) + "\n")
+        print(f"wrote {args.out}")
+
+    if problems:
+        for problem in problems:
+            print(f"  problem: {problem}")
+        print(f"\nFAIL: {len(problems)} problem(s); no pass-on-A / fail-on-B "
+              f"count is publishable while any pin is uncertified or stale.")
+        return 1
+    print(f"\n{pin_headline(certification, VERSION_A, VERSION_B)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="compatlab", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -544,6 +724,26 @@ def build_parser() -> argparse.ArgumentParser:
                      help="also write the self-contained HTML report")
     imp.add_argument("--json", action="store_true")
     imp.set_defaults(func=cmd_impact)
+
+    pin = sub.add_parser("pin", help="generate, certify and gate the pinned "
+                                     "regression tests")
+    pin_sub = pin.add_subparsers(dest="pin_command", required=True)
+
+    gen = pin_sub.add_parser("generate", help="compile the pins into a suite")
+    gen.add_argument("--out", default=str(SUITE_PATH))
+    gen.set_defaults(func=cmd_pin_generate)
+
+    cert = pin_sub.add_parser("certify", help="run the suite live on both "
+                                             "versions and record the outcome")
+    cert.add_argument("--suite", default=str(SUITE_PATH))
+    cert.set_defaults(func=cmd_pin_certify)
+
+    chk = pin_sub.add_parser("check", help="offline gate: drift, the recorded "
+                                          "run, and the certification")
+    chk.add_argument("--suite", default=str(SUITE_PATH))
+    chk.add_argument("--out", nargs="?", const=str(PIN_REPORT_PATH),
+                     help="also write the regression-test report")
+    chk.set_defaults(func=cmd_pin_check)
 
     cov = sub.add_parser("coverage", help="per-endpoint coverage stats")
     cov.add_argument("path", nargs="?")

@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "certified_at": "2026-11-05T03:58:36+00:00",
+  "mode": "live",
+  "version_a": "2022-11-15",
+  "version_b": "2025-03-31.basil",
+  "suite_fingerprint": "19625b641916fb9d",
+  "pins": [
+    {
+      "pin": "checkout_card_payment.create_payment_intent $.body.automatic_payment_methods",
+      "test": "test_checkout_card_payment_create_payment_intent__automatic_payment_methods",
+      "fingerprint": "b1d22ec4eb764d7c",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert {'allow_redirects': 'always', 'enabled': True} is None"
+    },
+    {
+      "pin": "checkout_card_payment.create_payment_intent $.body.capture_method",
+      "test": "test_checkout_card_payment_create_payment_intent__capture_method",
+      "fingerprint": "433f3ca53d68d08b",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 'automatic_async' == 'automatic' - automatic + automatic_async ? ++++++"
+    },
+    {
+      "pin": "checkout_card_payment.create_payment_intent $.body.payment_method_types",
+      "test": "test_checkout_card_payment_create_payment_intent__payment_method_types",
+      "fingerprint": "93c0be657e17573a",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert ['card', 'kla... 'amazon_pay'] == ['card'] Left contains 4 more items, first extra item: 'klarna' Use -v to get more diff"
+    },
+    {
+      "pin": "partial_capture_reconcile.list_refunds_for_intent $.body.count",
+      "test": "test_partial_capture_reconcile_list_refunds_for_intent__count",
+      "fingerprint": "4dbee4055e558eb1",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 0 == 1"
+    },
+    {
+      "pin": "partial_capture_reconcile.list_refunds_for_intent $.body.data",
+      "test": "test_partial_capture_reconcile_list_refunds_for_intent__data",
+      "fingerprint": "616d3ef0be3778c3",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 0 > 0"
+    },
+    {
+      "pin": "partial_capture_reconcile.retrieve_charge_after_partial $.body.data[0].amount_refunded",
+      "test": "test_partial_capture_reconcile_retrieve_charge_after_partial__data_0_amount_refunded",
+      "fingerprint": "d986823b247aad74",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 0 == 3000"
+    },
+    {
+      "pin": "subscription_billing.cancel_subscription $.body.current_period_end",
+      "test": "test_subscription_billing_cancel_subscription__current_period_end",
+      "fingerprint": "e3d5f6a4aa14ff1a",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert <missing> == '<ts+30d>'"
+    },
+    {
+      "pin": "subscription_billing.create_subscription $.body.current_period_end",
+      "test": "test_subscription_billing_create_subscription__current_period_end",
+      "fingerprint": "ed5f946e477c364c",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert <missing> == '<ts+30d>'"
+    },
+    {
+      "pin": "subscription_billing.list_subscription_invoices $.body.data[0].paid",
+      "test": "test_subscription_billing_list_subscription_invoices__data_0_paid",
+      "fingerprint": "c27ad5454f3be170",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert <missing> is True"
+    },
+    {
+      "pin": "subscription_billing.list_subscription_invoices $.body.data[0].payment_intent",
+      "test": "test_subscription_billing_list_subscription_invoices__data_0_payment_intent",
+      "fingerprint": "f99c58713ea0a25d",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert <missing> == '<id:pi>'"
+    },
+    {
+      "pin": "subscription_billing.preview_upcoming_by_subscription $.status",
+      "test": "test_subscription_billing_preview_upcoming_by_subscription__status",
+      "fingerprint": "5545fb33966723c4",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "assert 404 == 200"
+    }
+  ]
+}
