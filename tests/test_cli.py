@@ -266,3 +266,30 @@ def test_impact_exits_non_zero_when_a_claim_cannot_be_confirmed(tmp_path,
     out = capsys.readouterr().out
     assert "could not be confirmed" in out
     assert "UNCONFIRMED" in out
+
+
+def test_pin_generate_writes_the_suite_the_pins_compile_to(tmp_path, capsys):
+    out = tmp_path / "test_generated.py"
+    assert main(["pin", "generate", "--out", str(out)]) == 0
+    source = out.read_text()
+    assert "GENERATED" in source
+    assert "wrote" in capsys.readouterr().out
+    # Twice over is the same bytes, which is what the drift gate rests on.
+    assert main(["pin", "generate", "--out", str(out)]) == 0
+    assert out.read_text() == source
+    assert "unchanged" in capsys.readouterr().out
+
+
+def test_pin_certify_refuses_a_suite_that_is_not_what_the_pins_compile_to(
+        tmp_path, capsys):
+    """It would certify the file, and the file is not the pins."""
+    suite = tmp_path / "test_generated.py"
+    suite.write_text("def test_nothing():\n    assert True\n")
+    with pytest.raises(SystemExit) as exc:
+        main(["pin", "certify", "--suite", str(suite)])
+    assert "pin generate" in str(exc.value)
+
+
+def test_pin_check_fails_on_a_suite_that_does_not_exist(tmp_path, capsys):
+    assert main(["pin", "check", "--suite", str(tmp_path / "gone.py")]) == 1
+    assert "does not exist" in capsys.readouterr().out

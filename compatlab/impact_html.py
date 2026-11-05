@@ -435,7 +435,9 @@ customer data appears in it, and no number was entered by hand.</p>
 <figure>
 <p class="note">{len(pin_list)} regression test(s), one per place a declared
 read is blocked or corrupted. Each names the call to replay and the assertion
-that has to hold.</p>
+that has to hold. The tests themselves are generated from this table and run
+both ways against the API: each one passes on the old version and fails on
+the new one. The certified result is <code>docs/regression-tests.md</code>.</p>
 {_table(("Call", "Assert", "Workflows"), pin_rows)}
 </figure>
 <h2>Method</h2>

@@ -256,7 +256,7 @@ Pages the customer list into the warehouse every hour so marketing and support r
 
 ## What must be pinned
 
-11 regression test(s), one per place a declared read is blocked or corrupted. Phase 4 states what must be pinned; RC1-610 compiles each of these into an executable test and verifies the defining property, that it fails on 2025-03-31.basil and passes on 2022-11-15.
+11 regression test(s), one per place a declared read is blocked or corrupted. This section states what must be pinned; the tests themselves are generated from it and run both ways against the API, each one passing on 2022-11-15 and failing on 2025-03-31.basil — the suite is [`pinned/test_pinned_behavior.py`](../pinned/test_pinned_behavior.py) and the result is [`docs/regression-tests.md`](regression-tests.md).
 
 | Call | Assert | Workflows |
 |------|--------|-----------|
