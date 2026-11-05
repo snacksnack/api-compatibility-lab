@@ -25,6 +25,7 @@ table, not a fourth severity.
 from __future__ import annotations
 
 import json
+import pathlib
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -157,6 +158,27 @@ class Finding:
         extra = f" [{self.caveat}]" if self.caveat else ""
         return (f"{self.severity:8} {self.axis:15} {self.rule:28} "
                 f"{self.locus}{arrow}{extra}")
+
+
+def load(path: pathlib.Path) -> list[Finding]:
+    """Read a committed findings file back into `Finding` objects.
+
+    Phases 4 and 6 read `findings/findings.jsonl` rather than re-running the
+    differ: the impact report and the eval suite have to be about the findings
+    that were scored and adjudicated, and re-deriving them would let the
+    artifacts drift from the numbers published about them.
+    """
+    out = []
+    with path.open() as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            raw = json.loads(line)
+            # `key` is derived, and `targets` round-trips as a list.
+            raw.pop("key", None)
+            raw["targets"] = tuple(raw.get("targets") or ())
+            out.append(Finding(**raw))
+    return out
 
 
 @dataclass

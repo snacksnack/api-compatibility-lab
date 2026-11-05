@@ -10,12 +10,13 @@ HTTP status, silent truncation, and undocumented enum values. Every one of
 those breaks real integration code while the schema diff reports green.
 Behavior, not schema, is the contract customers actually depend on.
 
-**Status: Phase 5 (RC1-610) — regression-test generation.** Traffic is
+**Status: Phase 6 (RC1-611) — evals and instrumentation.** Traffic is
 captured, sanitized, replayed against both versions, classified, scored,
-mapped onto the customer workflows it affects, and each affected read is now
+mapped onto the customer workflows it affects, and each affected read is
 pinned by a generated test that passes on the old version and fails on the
-new one. Evals, dashboards and the portfolio writeup are Phases 6 and 7.
-Nothing here is a finished tool yet.
+new one. Those six results are now scored as an eval suite on every run and
+published as Datadog gauges behind a dashboard and three monitors. The
+portfolio writeup is Phase 7. Nothing here is a finished tool yet.
 
 > **Caught 4 of the 4 documented behavioral breaks the corpus exercises** (8
 > in the inventory). The schema-diff baseline gave no usable warning on three
@@ -66,6 +67,9 @@ Stripe's own published OpenAPI snapshots at pinned commits.
 - [`docs/adr/0006-regression-test-generation.md`](docs/adr/0006-regression-test-generation.md) —
   the three outcomes of a pinned test, why the offline run is not evidence,
   and what the certification gate refuses.
+- [`docs/adr/0007-evals-and-instrumentation.md`](docs/adr/0007-evals-and-instrumentation.md) —
+  the six scored dimensions, why a deterministic subject records `model: null`
+  and zero spend, and why there is no new SLO.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.
@@ -86,6 +90,8 @@ uv run compatlab impact --out --html   # map findings onto customer workflows
 uv run compatlab pin generate   # compile the pins into pinned/
 uv run compatlab pin certify    # run the pinned suite live on both versions
 uv run compatlab pin check --out  # offline gate + the regression-test report
+
+uv run --group evals python -m evals   # score the six quality dimensions
 ```
 
 `capture` runs the workflows in [`scenarios/`](scenarios) against version A,
@@ -349,6 +355,62 @@ then a check against the known fixture values found a customer's name inside
 an invoice description, in a corpus the scanner had called clean, because
 nothing about a name is detectable. See
 [ADR 0002](docs/adr/0002-redaction-and-corpus.md).
+
+## What is measured, and where it lands
+
+Four of the numbers above are CI gates, and a gate only ever answers *is this
+publishable right now*. `evals/` answers the other question — *is it getting
+better or worse, and attributably* — by scoring six dimensions over the
+committed artifacts and recording the run in the estate's shared eval store
+(RC1-548), where every figure is tagged with the code version that produced
+it.
+
+```
+uv run --group evals python -m evals --post-datadog
+```
+
+```
+6 dimension(s) against api-compatibility-lab 0.1.0 - deterministic, offline, no spend.
+
+  pass detection-recall  (0s)
+  pass false-breaks  (0s)
+  pass schema-diff-advantage  (0s)
+    ~ the-baseline-gave-no-usable-warning [advisory]: of the caught breaks, 2 drew
+      no baseline entry at all and 1 named the field without the behavior, while
+      the same baseline reported 12313 breaking changes on the endpoints this
+      corpus calls
+  pass workflow-mapping  (0s)
+  pass pinned-tests  (0s)
+  pass corpus-sanitization  (0s)
+```
+
+The dimensions are detection recall against the ground truth, the false-break
+rate, the schema-diff comparison, workflow-mapping validity and precision, the
+pinned suite's certification, and the PII count on the committed corpus. Each
+publishes its figures as `compatlab.*` gauges that the dashboard and three
+monitors in `tpm-automation-platform/datadog/` read.
+
+Four decisions are worth knowing before reading the output, all of them in
+[ADR 0007](docs/adr/0007-evals-and-instrumentation.md):
+
+- **This subject is deterministic, and the record says so.** Nothing in the
+  pipeline calls a model, so the run record carries `model: null` and zero
+  spend — written down rather than left out, because a missing field reads as
+  "we forgot" and the zero is worth being able to prove. No LLM Observability
+  pane, for the same reason: there is no model call to trace.
+- **The baseline comparison is advisory and nothing else is.** How badly
+  `oasdiff` does on these breaks is a property of Stripe's published specs,
+  not of this code, and a dimension that can fail for reasons outside the
+  subject gets muted. The other five fail the run.
+- **A missing number is not zero.** The false-break rate is `None` while any
+  finding lacks a hand verdict, and a `None` observation is left out of the
+  Datadog payload rather than sent as 0.0 — publishing it would turn "we have
+  not looked" into "we looked and found none".
+- **It does not run in CI.** `EVAL_DATABASE_URL` has one home, a developer
+  machine, so the suite runs by hand after a change and weekly from the shared
+  sweep. A trend with a hole in it is worse than a trend with a slower
+  cadence. The gates keep running on every push; the scorers themselves are
+  unit-tested there.
 
 ## Spike
 

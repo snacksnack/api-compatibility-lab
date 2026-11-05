@@ -50,6 +50,7 @@ from compatlab.corpus import files, read, validate, write
 from compatlab.coverage import GROUND_TRUTH_M, render, summarize
 from compatlab.differ import diff_pairs, sides
 from compatlab.findings import SEVERITIES, Finding
+from compatlab.findings import load as load_findings
 from compatlab.impact_html import render_html
 from compatlab.impact_report import render as render_impact
 from compatlab.pin_report import render as render_pins
@@ -397,22 +398,8 @@ def cmd_score(args: argparse.Namespace) -> int:
 
 
 def _findings_from(path: pathlib.Path) -> list[Finding]:
-    """Read the committed findings file back into Finding objects.
-
-    Phase 4 reads `findings/findings.jsonl` rather than re-running the differ,
-    because the impact report has to be about the findings that were scored
-    and adjudicated. Re-deriving them here would let the two reports drift.
-    """
-    out = []
-    with path.open() as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            raw = json.loads(line)
-            raw.pop("key", None)
-            raw["targets"] = tuple(raw.get("targets") or ())
-            out.append(Finding(**raw))
-    return out
+    """Read the committed findings file back into Finding objects."""
+    return load_findings(path)
 
 
 def cmd_impact(args: argparse.Namespace) -> int:
