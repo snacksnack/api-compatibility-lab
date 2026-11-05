@@ -77,6 +77,9 @@ Stripe's own published OpenAPI snapshots at pinned commits.
 - [`docs/adr/0007-evals-and-instrumentation.md`](docs/adr/0007-evals-and-instrumentation.md) —
   the six scored dimensions, why a deterministic subject records `model: null`
   and zero spend, and why there is no new SLO.
+- [`docs/m6-m8-probe.md`](docs/m6-m8-probe.md) — the two title-only
+  inventory entries read and probed live: what each break actually is, the
+  A/B tables, and the two assumptions the reading retired.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.

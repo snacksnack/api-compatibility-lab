@@ -12,10 +12,12 @@ Caught 4 of the 4 documented behavioral breaks the corpus exercises (8 in the in
 | M2 | `capture_method` defaults to `automatic_async` | 2024-04-10 | yes | yes | named |
 | M3 | Partial capture no longer creates a Refund | 2025-03-31.basil | yes | yes | green |
 | M4 | `GET /v1/invoices/upcoming` removed outright | 2025-03-31.basil | yes | yes | reported |
-| M5 | Checkout Session create/complete semantics | 2025-03-31.basil | no | no | green |
-| M6 | Checkout supports no-cost orders | 2023-08-16 | no | no | green |
-| M7 | Statement descriptor and prefix auto-populated | 2023-10-16 | no | no | green |
-| M8 | Partial invoice payment semantics | 2025-03-31.basil | no | no | green |
+| M5 | Checkout Session create/complete semantics | 2025-03-31.basil | no | no | not-covered |
+| M6 | Checkout `payment_method_collection` defaults to `if_required` | 2023-08-16 | no | no | not-covered |
+| M7 | Statement descriptor and prefix auto-populated | 2023-10-16 | no | no | not-covered |
+| M8 | Invoice `amount_paid` reflects out-of-band payments | 2025-03-31.basil | no | no | green |
+
+Schema diff column: `reported` means an entry about that field's own contract; `named` means the field is mentioned but not its behavior; `green` means nothing at all; `not-covered` means the baseline was never generated over that endpoint, because no captured call reaches it. A `not-covered` row is a statement about this corpus, not about Stripe's spec.
 
 ## Findings
 

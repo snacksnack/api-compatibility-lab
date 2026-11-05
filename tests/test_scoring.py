@@ -13,6 +13,7 @@ from compatlab.scoring import (
     GREEN,
     GROUND_TRUTH,
     NAMED,
+    NOT_COVERED,
     REPORTED,
     Adjudication,
     baseline_verdict,
@@ -54,11 +55,28 @@ def finding(**overrides) -> Finding:
 def test_the_inventory_matches_the_ground_truth_doc():
     assert len(GROUND_TRUTH) == 8
     assert [b.id for b in GROUND_TRUTH] == [f"M{i}" for i in range(1, 9)]
-    assert sum(1 for b in GROUND_TRUTH if b.confirmed) == 4
-    # Breaks with no loci are the ones no scenario reaches; each must say why.
+    # Six live-confirmed after RC1-618 Stage 1 probed M6 and M8. Confirmed is
+    # not exercised: both have a named observable and no scenario reaching it.
+    assert sum(1 for b in GROUND_TRUTH if b.confirmed) == 6
+    # Keyed on workflows, not loci: Stage 1 gave M6 and M8 their loci while
+    # leaving them unexercised, so loci no longer imply a scenario exists.
     for item in GROUND_TRUTH:
-        if not item.loci:
+        if not item.workflows:
             assert item.note, f"{item.id} is unexercised with no reason given"
+
+
+def test_a_live_confirmed_break_with_no_workflow_still_cannot_be_caught():
+    """The Stage 1 trap: a named observable is not an exercised one.
+
+    M6 and M8 carry loci now, so `evidence` has something to match on. What
+    keeps them out of the numerator is the empty workflow tuple, and a later
+    stage declaring a scenario is what should move them — not this edit.
+    """
+    for item in (BREAK["M6"], BREAK["M8"]):
+        assert item.confirmed and item.loci and not item.workflows
+        report = DiffReport(findings=[finding(
+            locus=item.loci[0], workflow="checkout_card_payment")])
+        assert evidence(report, item) == []
 
 
 def test_a_break_is_caught_only_by_a_finding_in_its_own_workflow():
@@ -99,6 +117,30 @@ def test_the_baseline_verdict_distinguishes_green_named_and_reported():
     assert baseline_verdict(card, BREAK["M1"])[0] == GREEN
     assert baseline_verdict(card, BREAK["M2"])[0] == NAMED
     assert baseline_verdict(card, BREAK["M4"])[0] == REPORTED
+
+
+def test_an_endpoint_outside_the_baseline_scope_is_not_reported_as_green():
+    """Green is a claim about the spec; not-covered is a claim about scope.
+
+    `index()` is built over two payment-intent and invoice-preview entries, so
+    the Checkout Session endpoint M6 names is outside it — exactly the state
+    the real baseline is in until a scenario captures a Checkout Session.
+    """
+    card = index()
+    verdict, rules = baseline_verdict(card, BREAK["M6"])
+    assert verdict == NOT_COVERED
+    assert rules == {}
+
+
+def test_not_covered_is_counted_as_neither_a_miss_nor_a_green():
+    report = DiffReport(findings=[finding()], steps_compared=1)
+    card = score(report, index(), Adjudication(), [{"targets": ["M2"]}])
+    rows = {b["id"]: b for b in card["ground_truth"]["breaks"]}
+    assert rows["M6"]["baseline"] == NOT_COVERED
+    # M6 is not caught, so it cannot reach the miss counts; the assertion that
+    # matters is that nothing in the baseline block counts it.
+    assert card["baseline"]["missed_by_schema_diff"] == ["M2"]
+    assert card["baseline"]["green_on_caught"] == 0
 
 
 def test_exercised_targets_are_read_off_the_pairs_not_assumed():
