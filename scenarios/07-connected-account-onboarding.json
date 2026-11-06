@@ -1,0 +1,41 @@
+{
+  "workflow": "connected_account_onboarding",
+  "description": "A platform onboards a connected account from a merchant's business profile, then reads the account back to show the merchant how their charges will appear on a cardholder's statement.",
+  "targets": ["M7"],
+  "note": "2023-10-16 is titled 'Statement descriptor and prefix auto-populated', and the title is not the break — the fourth entry in a row where that held. Live on POST /v1/accounts the rule changed rather than the defaulting: 2022-11-15 derives settings.payments.statement_descriptor from business_profile[url], basil derives it from business_profile[name] and falls back to the url with the WWW. stripped. With both fields sent, BOTH versions return a plausible non-null descriptor and simply disagree about what it says, so a null check passes on both sides. The prefix half does reproduce, but at settings.card_payments.statement_descriptor_prefix rather than the settings.payments path the title implies. Record in docs/m7-probe.md.",
+  "steps": [
+    {
+      "step": "create_account_full_profile",
+      "method": "POST",
+      "path": "/v1/accounts",
+      "body": {
+        "type": "standard",
+        "country": "US",
+        "email": "merchant@northwindsupply.example",
+        "business_profile[name]": "Northwind Supply Co",
+        "business_profile[url]": "https://www.northwindsupply.com",
+        "business_profile[mcc]": "5734"
+      },
+      "note": "The primary observable. Nothing in the request names a statement descriptor; both versions derive one, from different sources. business_profile[name] is redacted at write time, so on replay both sides derive from the same surrogate and the difference survives sanitization — which is the point of ADR 0003 D2."
+    },
+    {
+      "step": "retrieve_account",
+      "method": "GET",
+      "path": "/v1/accounts/{{create_account_full_profile.id}}",
+      "note": "What the platform reads back to render 'this is how your charges will appear'. Carries the positive control: business_profile.url is non-null and identical on both versions, so an absence of difference on the descriptor cannot be a profile that never applied."
+    },
+    {
+      "step": "create_account_url_only",
+      "method": "POST",
+      "path": "/v1/accounts",
+      "body": {
+        "type": "standard",
+        "country": "US",
+        "email": "ops@northwindsupply.example",
+        "business_profile[url]": "https://www.northwindsupply.com",
+        "business_profile[mcc]": "5734"
+      },
+      "note": "The same merchant onboarded without a business name. Both versions derive from the url here, and still disagree: A keeps WWW.NORTHWINDSUPPLY.COM, basil strips the prefix to NORTHWINDSUPPLY.COM. Last on purpose — nothing references its id."
+    }
+  ]
+}

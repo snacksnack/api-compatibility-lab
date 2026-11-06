@@ -346,6 +346,16 @@
       "verdict": "documented",
       "reference": "basil #2",
       "note": "Same enumerated list. The discriminator moved to `parent.type`, which is what an integration now has to check before reading the nested field."
+    },
+    {
+      "match": {
+        "rule": "value-changed",
+        "locus": "$.body.settings.payments.statement_descriptor",
+        "workflow": "connected_account_onboarding"
+      },
+      "verdict": "documented",
+      "reference": "2023-10-16 #2",
+      "note": "The published entry is titled 'Statement descriptor and prefix auto-populated', and live testing narrows it the way it narrowed M4: what changed is the derivation SOURCE, not the fact of population. 2022-11-15 derives the descriptor from business_profile[url]; basil derives it from business_profile[name] and falls back to the url with the WWW. prefix stripped. With both fields sent, both versions return a plausible non-null descriptor and disagree only about its content, so a null check passes on both sides. Scoped to this workflow on purpose: the locus is unique to it today, and a future workflow reaching the same field should be adjudicated rather than inherit this verdict."
     }
   ]
 }

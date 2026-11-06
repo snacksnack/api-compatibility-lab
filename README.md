@@ -18,26 +18,25 @@ new one. Those six results are scored as an eval suite on every run and
 published as Datadog gauges behind a dashboard and three monitors, and the
 whole thing is papered as an engagement in
 [`docs/engagement.md`](docs/engagement.md). It is still not a finished tool:
-the corpus exercises six of the eight documented breaks in the inventory, and
-the two that remain are unexercised for two different reasons (M7 needs a
-Connect test account; M5 was probed and confirmed live, then left unexercised
-by decision, because replaying its observable would put a browser inside the
-A/A control); the integration inventory is declared by the customer rather
-than discovered from their code.
+the corpus exercises seven of the eight documented breaks in the inventory,
+and the one that remains (M5) was probed and confirmed live, then left
+unexercised **by decision rather than by blocker** — replaying its observable
+would put a browser inside the A/A control; the integration inventory is
+declared by the customer rather than discovered from their code.
 
-> **Caught 6 of the 6 documented behavioral breaks the corpus exercises** (8
-> in the inventory). The schema-diff baseline gave no usable warning on five
-> of them — four with no entry at all, one naming the field but not the
-> behavior — while reporting 17,495 breaking changes on the same twenty-seven
-> endpoints. 62 findings classified breaking, every one adjudicated against
+> **Caught 7 of the 7 documented behavioral breaks the corpus exercises** (8
+> in the inventory). The schema-diff baseline gave no usable warning on six
+> of them — five with no entry at all, one naming the field but not the
+> behavior — while reporting 18,901 breaking changes on the same twenty-nine
+> endpoints. 65 findings classified breaking, every one adjudicated against
 > Stripe's changelog, 0 false breaks.
 >
-> **Of seven declared customer workflows, one stops outright, four keep
+> **Of eight declared customer workflows, one stops outright, five keep
 > running and go silently wrong, one is visibly degraded, and one is
-> unaffected.** 21 impact claims, all 21 confirmed against the replay record
+> unaffected.** 25 impact claims, all 25 confirmed against the replay record
 > by a checker that does not read the classifier's rule table.
 >
-> **19 of 19 generated regression tests pass on `2022-11-15` and fail on
+> **21 of 21 generated regression tests pass on `2022-11-15` and fail on
 > `2025-03-31.basil`**, certified by a live double run — one test per place a
 > declared customer read is blocked, corrupted or newly reachable, each
 > failing on its own assertion rather than on a step the replay never
@@ -89,6 +88,14 @@ Stripe's own published OpenAPI snapshots at pinned commits.
   exercise.
 
 ## Usage
+
+The sandbox needs two things beyond a key, both one-time and both in the
+Stripe dashboard: **Connect enabled**, and **Accounts v1 support enabled**
+(Settings -> Developers -> API policies). Without the second, `POST /v1/accounts`
+returns 400 on *both* pinned versions — Stripe deprecated Accounts v1 creation
+long after basil shipped, so it is an account-policy gate rather than a
+version difference. It is recorded here because the failure is
+indistinguishable from a break that does not exist (ADR 0001 D2).
 
 ```
 cp .env.example .env            # add a test-mode sandbox key
@@ -192,7 +199,7 @@ generously, on field name within endpoint: the claim is that the baseline
 missed things, and a loose match makes that harder to claim, not easier.
 
 Two things about that run matter as much as the score. It reported **254,576
-breaking changes** over the whole spec pair, 15,916 of the 17,495 on the
+breaking changes** over the whole spec pair, 17,204 of the 18,901 on the
 corpus's endpoints from a single rule — a new country or currency surfacing at
 every nested `anyOf` path that can reach it. Diffing these two specs does not
 hand a reader a green light they can trust; it hands them a haystack. And on
@@ -305,7 +312,7 @@ The defining property is not assertable from the repository, so it is run.
 generated suite over the result, twice, and records what every test did:
 
 ```
-19 of 19 pinned regression tests pass on 2022-11-15 and fail on 2025-03-31.basil
+21 of 21 pinned regression tests pass on 2022-11-15 and fail on 2025-03-31.basil
 ```
 
 Three things keep that number from being easy.
@@ -314,7 +321,7 @@ Three things keep that number from being easy.
   the replay can never have reached its step — and only the middle one is a
   pinned break. Workflows are sequences, and one that dies at its third call
   turns every test behind it red without exercising a single pin, which is how
-  a count of "tests that failed on B" would read 19 of 19 off a run that
+  a count of "tests that failed on B" would read 21 of 21 off a run that
   proved nothing.
 - **Fail-on-B is cheap; pass-on-A is the evidence.** Version A's traffic is
   fetched after the pins were written, so a pin holding there is a statement

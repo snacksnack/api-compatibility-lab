@@ -181,14 +181,29 @@ GROUND_TRUTH: tuple[Break, ...] = (
     ),
     Break(
         id="M7",
-        summary="Statement descriptor and prefix auto-populated",
+        summary="Checkout statement descriptor derives from the business name",
         version="2023-10-16",
-        confirmed=False,
-        workflows=(),
-        loci=(),
-        baseline_endpoint=("GET", "/v1/account"),
+        confirmed=True,
+        workflows=("connected_account_onboarding",),
+        loci=("$.body.settings.payments.statement_descriptor",
+              "$.body.settings.card_payments.statement_descriptor_prefix"),
+        baseline_endpoint=("POST", "/v1/accounts"),
         baseline_field="statement_descriptor",
-        note="Needs a Connect test account.",
+        note=("Narrowed in RC1-618 Stage 2, the fourth entry running where the "
+              "title was not the break. 'Auto-populated' understates it: what "
+              "changed is the derivation SOURCE. 2022-11-15 derives the "
+              "descriptor from `business_profile[url]`; basil derives it from "
+              "`business_profile[name]`, falling back to the url with `WWW.` "
+              "stripped. With both fields sent, BOTH versions return a "
+              "plausible non-null descriptor and disagree only about its "
+              "content, so a null check passes on both sides and the merchant "
+              "sees a different string on a cardholder's statement. The prefix "
+              "half does reproduce, but at "
+              "`settings.card_payments.statement_descriptor_prefix`, not the "
+              "`settings.payments` path the title implies. The baseline "
+              "endpoint moved from `GET /v1/account` to `POST /v1/accounts`: "
+              "the own-account read was never what this break surfaces on, and "
+              "the corpus does not call it. See docs/m7-probe.md."),
     ),
     Break(
         id="M8",

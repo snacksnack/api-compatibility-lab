@@ -75,6 +75,31 @@ relative to the run's own start and rounded to days, so two runs minutes apart
 agree on `<ts+0d>` while a period boundary a month out still reads as a
 different bucket.
 
+**Amended by RC1-618 Stage 2.** The decision is right and the implementation
+was not. "The run's own start" was computed as the earliest epoch found
+*anywhere* in the run's responses, which is the run's start only when every
+timestamp belongs to an object the run just created. It does not. Stripe
+deduplicates the ad-hoc Price an InvoiceItem creates, so the second run asking
+for the same amount and currency gets back a Price created days earlier — and
+only on `2022-11-15`, because basil replaced the InvoiceItem's top-level price
+with `pricing` and never exposes that object at all. One side anchored
+seventeen hours before the other, every timestamp in the run shifted by a
+whole bucket, and the differ reported **101 spurious breaking findings** on
+`created`, `period_start`, `due_date` and their kin — more than the entire
+real breaking count.
+
+The origin now comes from each record's own `captured_at`, which is the run's
+wall clock and owes nothing to what the server chose to embed. Two regression
+tests: one asserts the origin is the clock rather than the bodies, the other
+builds two runs that differ *only* in carrying a reused old object and asserts
+they canonicalize identically.
+
+Worth recording that the old test asserted the old behavior by name —
+`test_run_start_is_the_earliest_response_timestamp` — and its fixtures encoded
+the same assumption the code did, so nothing in the suite could tell the two
+origins apart. That is the third time in this project a green test turned out
+to share its blind spot with the code it covered.
+
 ## D5. Volatile keys are named, and each one is a stated blind spot
 
 `risk_score`, `authorization_code`, `network_transaction_id` are freshly
@@ -120,6 +145,17 @@ axis it reports as benign-forever (ADR 0004 D7).
 The generalizable part: "the differ handles timing on its own axis" was true
 of the differ and quietly false of the only other consumer of the same
 records. A guarantee that lives in one reader is not a property of the data.
+
+**Amended by RC1-618 Stage 2.** A third instance, and the sharpest one. Both
+of the control's runs are the *same version*, so they see the same response
+shapes, reuse the same server-side objects and compute the same timestamp
+origin. The origin bug in D4 was therefore invisible to it by construction:
+the control was passing with zero mismatches at the same moment the A/B diff
+was reporting 101 findings caused by nothing but canonicalization. **A control
+that compares like with like is silent on anything that only differs between
+versions** — which is the entire class this tool exists to find. The `duration_ms`
+bug, the symmetric id corruption, and now the origin: all three were caught by
+reading the diff, never by the control.
 
 ## D7. Account-wide state outlives a run
 

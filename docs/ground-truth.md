@@ -37,7 +37,7 @@ longer carry the marker; see docs/m6-m8-probe.md.
 | # | Change | Objects | Class |
 |---|--------|---------|-------|
 | 1 | New account requirement error codes | Account | BOTH |
-| 2 | Statement descriptor and prefix auto-populated | Account | BEHAVIORAL |
+| 2 | Statement descriptor and prefix auto-populated. **Live-verified in RC1-618:** the derivation SOURCE changed, not the fact of population — `2022-11-15` derives the descriptor from `business_profile[url]`, basil from `business_profile[name]` with a url fallback that strips `WWW.`; with both sent, both versions return a plausible non-null value and disagree only about its content | Account | BEHAVIORAL |
 
 ## 2024-04-10
 
@@ -102,10 +102,14 @@ spike (docs/spike-findings.md) live-verified entries where noted.
 | 4 | `GET /v1/invoices/upcoming` removed outright (both call shapes 404) | basil | **confirmed live** |
 | 5 | Checkout Session defers subscription and invoice to completion (observables: `$.body.subscription`, `$.body.invoice`, read after a failed payment attempt) | basil | **confirmed live**, unexercised by decision (ADR 0003 D2) |
 | 6 | Checkout `payment_method_collection` defaults to `if_required` (observables: `$.body.payment_method_collection`, and `$.status` on a zero-total session) | 2023-08-16 | **confirmed live, exercised, caught** |
-| 7 | Statement descriptor auto-population | 2023-10-16 | pending (needs Connect test account) |
+| 7 | Checkout statement descriptor derives from the business name (observables: `$.body.settings.payments.statement_descriptor`, `$.body.settings.card_payments.statement_descriptor_prefix`) | 2023-10-16 | **confirmed live, exercised, caught** |
 | 8 | Invoice `amount_paid` reflects out-of-band payments (observables: `$.body.amount_paid`, `$.body.amount_remaining`) | basil | **confirmed live, exercised, caught** |
 
-**M = 8 (7 confirmed live, 6 exercised and caught, 2 unexercised).**
+**M = 8 (8 confirmed live, 7 exercised and caught, 1 unexercised).**
+
+Every entry in the inventory is now confirmed live. The remaining gap is
+reach, not knowledge: M5 has a named observable and no scenario that can
+reach it within the replay contract.
 
 RC1-618 Stage 1 read the two title-only M entries' detail pages and probed
 them on both versions. Both survived and both narrowed, so M did not move:
@@ -127,15 +131,27 @@ invoice. The break appears only after a *failed* payment attempt: A leaves an
 `incomplete` subscription and an `open` invoice behind, basil leaves nothing,
 and both sessions still report `status: open` and `payment_status: unpaid`.
 
-The two unexercised entries are now unexercised for two different kinds of
-reason, and the distinction is worth keeping. M7 waits on a Connect test
-account, which somebody can enable. **M5 waits on a tradeoff this project has
+**RC1-618 Stage 2 then read and probed M7**, the last entry with an external
+blocker, and it survived and narrowed like the three before it
+(docs/m7-probe.md). The title says "auto-populated"; what changed is the
+derivation source. It is now the inventory's cleanest catch, because in the
+name-and-url case **both versions return a plausible non-null descriptor and
+disagree only about its content** — a null check passes on both sides, and the
+only thing that differs is what a cardholder reads on their statement.
+
+Stage 2 also turned up something larger than M7. `POST /v1/accounts` now 400s
+on **both** versions pending an account-level Accounts v1 policy toggle, which
+makes it account-gated rather than version-gated — the `total_count` shape from
+the Phase 0 spike. **A pinned `Stripe-Version` does not insulate a replay from
+a provider policy changed after that version shipped.** Recorded in ADR 0001.
+
+**M5 is the one entry left, and it waits on a tradeoff this project has
 already refused**: its observable needs a hosted page driven with a declining
 card, and ADR 0003 D2 replays by re-execution, so a scenario reaching it would
 put a browser inside `replay` and `pin certify` and make the lab's own A/A
-control non-deterministic. Both stay reported as *unexercised*, and the test
+control non-deterministic. It stays reported as *unexercised*, and the test
 asserting a break with no declared workflow cannot be reported as caught still
-holds for them.
+holds for it.
 
 **Phase 3 (RC1-608) scored this inventory mechanically.** All four
 live-confirmed breaks are caught by the differ; the four pending entries are
@@ -150,25 +166,34 @@ baseline said about each one, from `baseline/schema-diff-index.jsonl`:
 | M3 | yes (breaking) | **green** | `amount_refunded` is not named once on `GET /v1/charges` |
 | M4 | yes (breaking) | reported | `api-path-removed-without-deprecation` on `GET /v1/invoices/upcoming` |
 | M6 | yes (breaking) | **green** | `payment_method_collection` is not named once on `POST /v1/checkout/sessions` |
+| M7 | yes (breaking) | **green** | `statement_descriptor` is not named once on `POST /v1/accounts` |
 | M8 | yes (breaking) | **green** | neither `amount_paid` nor `amount_remaining` is named once on `GET /v1/invoices/{id}` |
 
-So five of the six caught breaks had no usable warning in a schema diff that
-reported 17,495 breaking changes on the same twenty-seven endpoints. M4 is the
+So six of the seven caught breaks had no usable warning in a schema diff that
+reported 18,901 breaking changes on the same twenty-nine endpoints. M4 is the
 one with a schema-visible half, and is counted as caught by both. Scorecard in
 docs/behavioral-diff-report.md; methodology in ADR 0004.
 
-For the unexercised entries the scorecard prints a fourth verdict,
+For an unexercised entry the scorecard prints a fourth verdict,
 `not-covered`, rather than `green`. The baseline's path scope is derived from
 the endpoints the corpus calls, so an endpoint no captured call reaches was
 never diffed at all, and reporting it as green credits the schema diff with a
-silence it was never asked for. Only M7's `GET /v1/account` is in that state
-now; widening the corpus brought Checkout Sessions into scope, which turned
-M6's row into a real **green** and M5's into **reported** — the baseline does
-have `response-required-property-removed` on the `subscription` field M5
-depends on, so the one unexercised Checkout break is the one with a
-schema-visible half.
+silence it was never asked for. **No row is in that state now.** Widening the
+corpus brought Checkout Sessions and `POST /v1/accounts` into scope, which
+turned M6's and M7's rows into real **green** verdicts and M5's into
+**reported** — the baseline does have `response-required-property-removed` on
+the `subscription` field M5 depends on, so the one unexercised break is also
+the one with a schema-visible half.
 
-M6 and M8 are the third and fourth fully green catches: `payment_method_collection`
+M7's baseline endpoint moved as part of this: it was `GET /v1/account`, the
+platform's own account, which is not where the break surfaces and is not a
+call the corpus makes. It is now `POST /v1/accounts`.
+
+M6, M7 and M8 are the third, fourth and fifth fully green catches. For M7,
+`statement_descriptor` is not named once in the breaking entries for
+`POST /v1/accounts`, on a break where **both versions return a plausible
+non-null value and disagree only about its content** — a null check passes on
+both sides. For the other two: `payment_method_collection`
 is not named once in the breaking entries for `POST /v1/checkout/sessions`,
 and `amount_paid` and `amount_remaining` are not named once in the 702
 `oasdiff` produces for the Invoice object — which does carry `paid` and

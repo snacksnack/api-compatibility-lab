@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "certified_at": "2026-11-05T19:01:13+00:00",
+  "certified_at": "2026-11-06T11:45:37+00:00",
   "mode": "live",
   "version_a": "2022-11-15",
   "version_b": "2025-03-31.basil",
-  "suite_fingerprint": "4236a63ed23eef03",
+  "suite_fingerprint": "e8b67d272f8767ca",
   "pins": [
     {
       "pin": "checkout_card_payment.create_payment_intent $.body.automatic_payment_methods",
@@ -59,6 +59,24 @@
       "on_b": "broke",
       "detail_a": "",
       "detail_b": "AssertionError: assert 'if_required' == 'always' - always + if_required"
+    },
+    {
+      "pin": "connected_account_onboarding.create_account_full_profile $.body.settings.payments.statement_descriptor",
+      "test": "test_create_account_full_profile__settings_payments_statement_descriptor",
+      "fingerprint": "21ac006fb05939b8",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 'REDACTED-0DE8E8B1' == 'WWW.NORTHWINDSUPPLY.COM' - WWW.NORTHWINDSUPPLY.COM + REDACTED-0DE8E8B1"
+    },
+    {
+      "pin": "connected_account_onboarding.create_account_url_only $.body.settings.payments.statement_descriptor",
+      "test": "test_create_account_url_only__settings_payments_statement_descriptor",
+      "fingerprint": "7473a4149f1e9d1a",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 'NORTHWINDSUPPLY.COM' == 'WWW.NORTHWINDSUPPLY.COM' - WWW.NORTHWINDSUPPLY.COM ? ---- + NORTHWINDSUPPLY.COM"
     },
     {
       "pin": "invoice_out_of_band_payment.pay_invoice_out_of_band $.body.amount_paid",

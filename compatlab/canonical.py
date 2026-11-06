@@ -24,6 +24,7 @@ days out to a calendar month still reads as a different bucket.
 
 from __future__ import annotations
 
+import datetime
 import re
 from typing import Any
 
@@ -110,13 +111,48 @@ def build_id_map(records: list[dict]) -> dict[str, str]:
 
 
 def run_start(records: list[dict]) -> int:
-    """Earliest response timestamp in a run, as the timestamp origin."""
-    stamps = [
+    """When the run happened, as the timestamp origin.
+
+    Read from each record's own `captured_at`, not from the response bodies.
+    The body-derived version was wrong in a way that stayed hidden for three
+    cascades: it took the earliest epoch *anywhere* in a response, and a
+    response can carry the `created` of a server-side object that predates the
+    run. Stripe deduplicates the ad-hoc Price an InvoiceItem creates, so the
+    second run to request the same amount and currency reuses yesterday's
+    Price and reports yesterday's `created` — on `2022-11-15` only, because
+    basil replaced the InvoiceItem's top-level price with `pricing` and never
+    exposes that object. One side anchored 17 hours earlier than the other,
+    every timestamp in the run shifted by a whole bucket, and the differ
+    reported 101 spurious breaking `value-changed` findings on `created`,
+    `period_start`, `due_date` and their kin.
+
+    **The A/A control cannot catch this.** Both of its runs are the same
+    version, so they see the same shape, reuse the same objects and compute
+    the same origin. It is the `duration_ms` blind spot of ADR 0003 D6 again,
+    from a different direction: a control that compares like with like is
+    silent on anything that only differs *between* versions.
+
+    `captured_at` is the run's own wall clock and owes nothing to what the
+    server chose to embed. The body-derived form stays as a fallback for
+    records written before the field existed.
+    """
+    stamps = []
+    for rec in records:
+        raw = rec.get("captured_at")
+        if not raw:
+            continue
+        try:
+            stamps.append(int(datetime.datetime.fromisoformat(raw).timestamp()))
+        except (TypeError, ValueError):
+            continue
+    if stamps:
+        return min(stamps)
+    bodies = [
         value
         for rec in records
         for value in _epochs(rec["response"].get("body"))
     ]
-    return min(stamps) if stamps else 0
+    return min(bodies) if bodies else 0
 
 
 def _epochs(value: Any) -> list[int]:
