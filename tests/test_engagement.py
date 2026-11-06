@@ -91,8 +91,9 @@ def test_recall_is_quoted_with_its_denominator_and_the_inventory():
     assert f"({ground['m']}\n  in the inventory" in doc()
     # The unexercised half is named as a limitation, not rounded away.
     missing = ground["m"] - exercised
+    verb = "is" if missing == 1 else "are"
     assert (f"**{word(missing).capitalize()} of the {word(ground['m'])} documented "
-            f"breaks in the inventory are unexercised.**" in doc())
+            f"breaks in the inventory {verb} unexercised.**" in doc())
 
 
 def test_the_baseline_figures_are_quoted_exactly():

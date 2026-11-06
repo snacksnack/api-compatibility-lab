@@ -22,3 +22,4 @@ htmlcov/
 # pinned by SHA in ADR 0001 D3 and refetchable; the derived index is committed)
 .cache/
 .ruff_cache/
+site/

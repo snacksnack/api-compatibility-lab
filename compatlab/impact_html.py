@@ -35,6 +35,7 @@ from compatlab.impact import (
     WorkflowImpact,
 )
 from compatlab.impact_report import VERDICT_LABEL, headline
+from compatlab.theme import document
 from compatlab.verify import Verification
 from compatlab.workflows import USE_SUMMARY, USES
 
@@ -51,88 +52,6 @@ _VERDICT_BADGE = {
     "clear": ("#3d8f5a", "✓"),
 }
 
-_CSS = """
-:root {
-  color-scheme: light;
-  --page: #f9f9f7; --surface: #fcfcfb;
-  --ink: #0b0b0b; --ink-2: #52514e; --ink-muted: #898781;
-  --hairline: #e1e0d9; --baseline: #c3c2b7;
-  --bar: #2a78d6;
-  --border: rgba(11, 11, 11, 0.1);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19;
-    --ink: #f0efec; --ink-2: #c3c2b7; --ink-muted: #898781;
-    --hairline: #2c2c2a; --baseline: #383835;
-    --bar: #3987e5;
-    --border: rgba(255, 255, 255, 0.1);
-  }
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--page); color: var(--ink);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-main { max-width: 920px; margin: 0 auto; padding: 32px 16px 64px; }
-h1 { font-size: 1.5rem; margin: 0 0 4px; }
-h2 { font-size: 1.05rem; margin: 40px 0 12px; }
-h3 { font-size: 0.95rem; margin: 0 0 6px; }
-.subtitle, figcaption, .note { color: var(--ink-2); font-size: 0.85rem; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px; margin-top: 24px; }
-.tile { background: var(--surface); border: 1px solid var(--border);
-  border-radius: 8px; padding: 12px 14px; }
-.tile .label { color: var(--ink-2); font-size: 0.78rem; }
-.tile .value { font-size: 1.5rem; font-weight: 600; }
-figure { margin: 16px 0 0; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
-figure h3 { font-size: 0.9rem; margin: 0 0 12px; }
-.row { display: grid; grid-template-columns: 210px 1fr; align-items: center;
-  column-gap: 10px; margin: 6px 0; }
-.row .cat { color: var(--ink-2); font-size: 0.8rem; text-align: right;
-  overflow-wrap: anywhere; }
-.row .track { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.row .fill { height: 18px; background: var(--bar);
-  border-radius: 0 4px 4px 0; flex: none; max-width: calc(100% - 46px); }
-.row .val { color: var(--ink-2); font-size: 0.8rem; white-space: nowrap;
-  font-variant-numeric: tabular-nums; }
-details { margin-top: 10px; }
-details summary { color: var(--ink-muted); font-size: 0.78rem; cursor: pointer; }
-/* Tables carry long identifiers and a prose column, so they are allowed to
-   be wider than the card and scroll inside it rather than spill out of it. */
-.tw { overflow-x: auto; margin-top: 8px; }
-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-th { text-align: left; color: var(--ink-2); font-weight: 600; }
-th, td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--hairline);
-  vertical-align: top; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.sev { white-space: nowrap; font-weight: 600; }
-.sev .glyph { font-size: 0.7rem; margin-right: 4px; }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em; overflow-wrap: break-word; }
-/* The call column holds long unbroken identifiers; without a floor the auto
-   layout squeezes it and breaks `preview_upcoming_by_subscription` mid-word
-   across four lines. */
-.wf table { font-size: 0.8rem; }
-.wf table td:first-child, .wf table th:first-child { min-width: 175px; }
-table.impacts tr.impact td { border-bottom: none; padding-bottom: 2px; }
-table.impacts tr.why td { color: var(--ink-2); padding: 0 0 10px; }
-.prose { background: var(--surface); border: 1px solid var(--border);
-  border-radius: 8px; padding: 16px; margin-top: 16px; }
-.wf { background: var(--surface); border: 1px solid var(--border);
-  border-radius: 8px; padding: 16px; margin-top: 16px; }
-.wf .meta { color: var(--ink-2); font-size: 0.8rem; margin: 4px 0 0; }
-.seq { list-style: none; margin: 14px 0 0; padding: 0; }
-.seq li { display: grid; grid-template-columns: 24px 1fr; gap: 10px;
-  padding: 7px 0; border-top: 1px solid var(--hairline); }
-.seq li .n { color: var(--ink-muted); font-size: 0.8rem;
-  font-variant-numeric: tabular-nums; text-align: right; }
-.seq li .what { color: var(--ink-2); font-size: 0.8rem; }
-ul { margin: 8px 0; padding-left: 20px; }
-@media (max-width: 620px) { .row { grid-template-columns: 120px 1fr; } }
-"""
 
 
 # Reasons and assertions are written once, in the mapper, and rendered by both
@@ -360,7 +279,12 @@ def _derivation(report: ImpactReport) -> str:
 
 def render_html(report: ImpactReport, verification: Verification,
                 pin_list: list[dict]) -> str:
-    """The whole self-contained page."""
+    """The whole self-contained page.
+
+    Still self-contained: the published site (ADR 0008) wraps the committed
+    output of this function rather than asking it to render site chrome, so
+    what the site serves is the same file an FDE sends a customer.
+    """
     summary = report.to_dict()
     precision = verification.precision
     tiles = "".join([
@@ -412,17 +336,9 @@ def render_html(report: ImpactReport, verification: Verification,
          escape(", ".join(item["workflows"]) or "-"))
         for item in verification.coverage
     ]
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>API upgrade impact report: {escape(report.version_a)} to {escape(report.version_b)}</title>
-<style>{_CSS}</style>
-</head>
-<body>
-<main>
+    title = (f"API upgrade impact report: {escape(report.version_a)} to "
+             f"{escape(report.version_b)}")
+    return document(title, f"""<main>
 <h1>API upgrade impact report</h1>
 <p class="subtitle">Stripe <code>{escape(report.version_a)}</code> to
 <code>{escape(report.version_b)}</code>. Every statement on this page is
@@ -484,6 +400,4 @@ which is why the number is named <em>mapping</em> precision.</p>
             "Breaks the mapping still reaches (regression guard, not evidence)")}
 </figure>
 </main>
-</body>
-</html>
-"""
+""")

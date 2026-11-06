@@ -42,10 +42,14 @@ declared by the customer rather than discovered from their code.
 > failing on its own assertion rather than on a step the replay never
 > reached.
 >
+> **Read them rendered: <https://snacksnack.github.io/api-compatibility-lab/>**
+>
 > Scorecard: [`docs/behavioral-diff-report.md`](docs/behavioral-diff-report.md).
 > Impact report: [`docs/impact-report.md`](docs/impact-report.md), and the
 > self-contained page a customer would be sent,
-> [`docs/impact-report.html`](docs/impact-report.html). Pinned tests:
+> [`docs/impact-report.html`](docs/impact-report.html) — a committed `.html`
+> file, so GitHub shows it as source; the published site serves those exact
+> bytes. Pinned tests:
 > [`docs/regression-tests.md`](docs/regression-tests.md).
 
 ## Ground truth
@@ -433,6 +437,27 @@ Four decisions are worth knowing before reading the output, all of them in
   sweep. A trend with a hole in it is worse than a trend with a slower
   cadence. The gates keep running on every push; the scorers themselves are
   unit-tested there.
+
+## Publishing
+
+The reader-facing documents are published as a static site at
+<https://snacksnack.github.io/api-compatibility-lab/>, built by Actions from
+`main` and never committed (ADR 0008).
+
+```
+uv run --group site python -m publish --out site --clean
+```
+
+The impact report is the committed `docs/impact-report.html` with the site's
+header and footer spliced into it, not a second render: what the site serves
+is the file an FDE would send. Everything else is markdown from `docs/`,
+rendered through the same stylesheet.
+
+The build is also the strictest link checker here. Relative links in `docs/`
+are written to resolve on disk and on GitHub, and neither convention survives
+publication, so every link is re-resolved and pointed either at the page that
+renders that document or at the source on GitHub. A link that resolves to
+nothing fails the build. It runs on pull requests too, without deploying.
 
 ## Spike
 

@@ -9,9 +9,10 @@ its fixture: eight declared integration workflows in
 `2022-11-15` and `2025-03-31.basil`. Every figure below traces to a committed
 artifact; nothing is an estimate.
 
-The lab is not finished (Phase 7 of RC1-603, and the corpus exercises half the
-documented breaks in the inventory). What is finished is the argument, and
-this document is that argument against one version pair.
+The lab is not finished: the inventory of workflows is declared by the
+customer rather than discovered from their code, and every figure here
+describes one version pair of one API. What is finished is the argument, and
+this document is that argument against that pair.
 
 ## Statement of work
 
@@ -219,9 +220,9 @@ gates against.
 
 ## What this does not say
 
-- **One of the eight documented breaks in the inventory are unexercised.**
+- **One of the eight documented breaks in the inventory is unexercised.**
   It is listed, reported as unexercised, and excluded from the recall
-  denominator. Widening the corpus to reach the others is tracked as RC1-618,
+  denominator. Widening the corpus was tracked as RC1-618,
   which took the exercised count from four to seven and is the honest answer
   to "is 7 of 7 a good score" — it is 7 of 7 of what this traffic can reach.
   The one that remains, M5, was read and probed, confirmed live, and left
