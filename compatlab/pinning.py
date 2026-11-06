@@ -181,6 +181,13 @@ def _slug(text: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", text.lower())).strip("_")
 
 
+# `def ` + the name + `(`, against the line length `compatlab.codegen` holds
+# generated files to. Named here rather than imported to keep the name builder
+# free of a dependency on the renderer.
+DEF_PREFIX = "def "
+NAME_WIDTH = 100
+
+
 def name_for(pin: Pin) -> str:
     """A stable, legible test name: the step and the locus it pins.
 
@@ -189,7 +196,23 @@ def name_for(pin: Pin) -> str:
     every certification entry for it becomes a claim about a different test.
     """
     tail = _slug(pin.locus.removeprefix("$.body.").removeprefix("$."))
-    return f"test_{_slug(pin.corpus)}__{tail}"
+    name = f"test_{_slug(pin.corpus)}__{tail}"
+    if len(DEF_PREFIX) + len(name) + 1 <= NAME_WIDTH:
+        return name
+    # An identifier cannot be folded, so a name that would push `def NAME(`
+    # past the project's line length drops the workflow half of the corpus
+    # reference and keeps the step and the locus. `codegen` wraps signatures
+    # and (since RC1-618 Stage 2) body statements, but neither can help here,
+    # and a generated file the repository's own linter rejects is a generated
+    # file somebody hand-edits.
+    #
+    # The full corpus reference stays in the body and the docstring, which is
+    # where the test's identity actually lives. Shortening only the names that
+    # need it keeps every existing pin — and so every certification entry
+    # naming one — unchanged.
+    _, _, step = pin.corpus.partition(".")
+    shortened = f"test_{_slug(step)}__{tail}" if step else name
+    return shortened if len(shortened) < len(name) else name
 
 
 def _flat(value: Any) -> bool:

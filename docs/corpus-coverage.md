@@ -1,9 +1,11 @@
-Records: 38
-Versions: 2022-11-15 (38)
-Statuses: 200: 34, 400: 3, 404: 1
+Records: 41
+Versions: 2022-11-15 (41)
+Statuses: 200: 37, 400: 3, 404: 1
 
 | Method | Endpoint | Calls | Statuses |
 |--------|----------|-------|----------|
+| POST | `/v1/accounts` | 2 | 200×2 |
+| GET | `/v1/accounts/{id}` | 1 | 200×1 |
 | GET | `/v1/charges` | 2 | 200×2 |
 | POST | `/v1/checkout/sessions` | 2 | 200×1, 400×1 |
 | GET | `/v1/checkout/sessions/{id}` | 1 | 200×1 |
@@ -36,15 +38,17 @@ Statuses: 200: 34, 400: 3, 404: 1
 |----------|-------|---------|---------|
 | checkout_card_payment | 8 | 8 | 0 |
 | checkout_session_no_cost | 3 | 2 | 1 |
+| connected_account_onboarding | 3 | 3 | 0 |
 | invoice_out_of_band_payment | 6 | 6 | 0 |
 | pagination_and_errors | 6 | 3 | 3 |
 | partial_capture_reconcile | 4 | 4 | 0 |
 | subscription_billing | 11 | 11 | 0 |
 
-Ground-truth breaks exercised: 6 of 8
+Ground-truth breaks exercised: 7 of 8
 - M1: checkout_card_payment
 - M2: checkout_card_payment
 - M3: partial_capture_reconcile
 - M4: subscription_billing
 - M6: checkout_session_no_cost
+- M7: connected_account_onboarding
 - M8: invoice_out_of_band_payment

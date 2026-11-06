@@ -116,3 +116,48 @@ def test_an_unknown_kind_raises_rather_than_rendering_nothing():
         render_test(type(broken)(pin=broken.pin, name=broken.name,
                                  kind="invented", expected=None, reason=""),
                     VERSION_A, VERSION_B)
+
+
+def test_a_long_pin_keeps_the_generated_body_inside_the_line_length():
+    """Body statements were never folded; only short loci hid it.
+
+    The first pin past 100 columns was a statement descriptor
+    (`$.body.settings.payments.statement_descriptor` against a long literal)
+    and it emitted a file the repository's own linter rejects.
+    """
+    pin = make_pin(
+        corpus="account_onboarding.create_account",
+        locus="$.body.settings.payments.statement_descriptor",
+        declared_read="$.body.settings.payments.statement_descriptor",
+        expect_on_a="WWW.NORTHWINDSUPPLY.COM",
+    )
+    rendered = render_test(
+        compile_pin(pin, record({"settings": {"payments": {
+            "statement_descriptor": "WWW.NORTHWINDSUPPLY.COM"}}})),
+        VERSION_A, VERSION_B)
+    assert all(len(line) <= WIDTH for line in rendered.splitlines())
+    # Hoisted, not truncated: the comparison is unchanged.
+    assert "expected = 'WWW.NORTHWINDSUPPLY.COM'" in rendered
+    assert "== expected" in rendered
+    ast.parse(rendered)
+
+
+def test_two_pins_compiling_to_one_test_name_raise():
+    """A shortened name can collide, and Python would not say so.
+
+    The second `def` would replace the first, the suite would lose a pin, and
+    `pin certify` would report a smaller number without reporting a problem.
+    """
+    locus = "$.body.settings.payments.statement_descriptor"
+    tests = [
+        compile_pin(make_pin(corpus=f"{workflow}.create_account_full_profile",
+                             locus=locus,
+                             declared_read=locus, expect_on_a="X"),
+                    record({"settings": {"payments": {
+                        "statement_descriptor": "X"}}}))
+        for workflow in ("connected_account_onboarding",
+                         "marketplace_merchant_signup_flow")
+    ]
+    assert tests[0].name == tests[1].name, "the fixture must actually collide"
+    with pytest.raises(ValueError, match="two pins compile to the test name"):
+        render_module(tests, VERSION_A, VERSION_B)

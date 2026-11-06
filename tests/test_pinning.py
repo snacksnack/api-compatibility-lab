@@ -175,3 +175,21 @@ def test_reached_answers_whether_the_step_ran():
 def test_a_pin_whose_corpus_is_not_workflow_dot_step_refuses():
     with pytest.raises(CompileError):
         pin_from({"corpus": "no-dot"})
+
+
+def test_a_name_too_long_for_a_def_line_drops_the_workflow():
+    """An identifier cannot be folded, so an over-long name is shortened.
+
+    Only when it has to be: every pin that already fits keeps its name, which
+    is what keeps existing certification entries pointing at the same test.
+    """
+    long_pin = make_pin(
+        corpus="connected_account_onboarding.create_account_full_profile",
+        locus="$.body.settings.payments.statement_descriptor")
+    name = name_for(long_pin)
+    assert len("def ") + len(name) + 1 <= 100
+    assert name == ("test_create_account_full_profile__"
+                    "settings_payments_statement_descriptor")
+
+    short_pin = make_pin(corpus="w.s", locus="$.body.count")
+    assert name_for(short_pin) == "test_w_s__count"

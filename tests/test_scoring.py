@@ -56,11 +56,11 @@ def finding(**overrides) -> Finding:
 def test_the_inventory_matches_the_ground_truth_doc():
     assert len(GROUND_TRUTH) == 8
     assert [b.id for b in GROUND_TRUTH] == [f"M{i}" for i in range(1, 9)]
-    # Seven live-confirmed after RC1-618 Stage 3 probed M5. Confirmed is not
-    # exercised: M5 has a named observable and no scenario reaching it, and
-    # the reason is a decision about the replay contract rather than a
-    # missing account (ADR 0003 D2, docs/m5-probe.md).
-    assert sum(1 for b in GROUND_TRUTH if b.confirmed) == 7
+    # All eight live-confirmed after RC1-618 Stage 2 probed M7. Confirmed is
+    # still not exercised: M5 has a named observable and no scenario reaching
+    # it, by a decision about the replay contract rather than a missing
+    # account (ADR 0003 D2, docs/m5-probe.md).
+    assert sum(1 for b in GROUND_TRUTH if b.confirmed) == 8
     # Keyed on workflows, not loci: Stage 1 gave M6 and M8 their loci while
     # leaving them unexercised, so loci no longer imply a scenario exists.
     for item in GROUND_TRUTH:

@@ -117,6 +117,29 @@ def _signature(test: PinnedTest, fixture: str) -> list[str]:
     return [f"def {test.name}(", f"{INDENT}{fixture},", "):"]
 
 
+def _body_line(line: str) -> list[str]:
+    """One body statement, indented, and hoisted if it would run long.
+
+    `_wrapped` and `_signature` kept docstrings and signatures inside WIDTH
+    from the start; body statements were never folded, which held only while
+    every pinned locus was short. A long locus plus a long pinned value
+    (`$.body.settings.payments.statement_descriptor` against
+    `'WWW.NORTHWINDSUPPLY.COM'`) is the first pin to pass 100 columns, and it
+    emitted a generated file the repository's own linter rejects — the exact
+    thing the note on WIDTH says must not happen.
+
+    An assertion cannot be folded the way prose can without changing what it
+    asserts, so the pinned value moves to its own line instead. Nothing about
+    the comparison changes; only where the literal sits.
+    """
+    if len(INDENT) + len(line) <= WIDTH:
+        return [f"{INDENT}{line}"]
+    head, sep, tail = line.rpartition(" == ")
+    if sep and head.startswith("assert "):
+        return [f"{INDENT}expected = {tail}", f"{INDENT}{head} == expected"]
+    return [f"{INDENT}{line}"]
+
+
 def render_test(test: PinnedTest, version_a: str, version_b: str) -> str:
     fixture = "side" if test.kind == REACHABLE else "canonical"
     doc = _docstring(test, version_a, version_b)
@@ -131,7 +154,8 @@ def render_test(test: PinnedTest, version_a: str, version_b: str) -> str:
     for line in doc[1:]:
         out += _wrapped(line)
     out.append(f"{INDENT}{TRIPLE}")
-    out += [f"{INDENT}{line}" for line in _body(test)]
+    for line in _body(test):
+        out += _body_line(line)
     return "\n".join(out) + "\n"
 
 
@@ -189,7 +213,24 @@ exercised at all. `compatlab pin certify` keeps those apart.
 
 
 def render_module(tests: list[PinnedTest], version_a: str, version_b: str) -> str:
-    """The whole generated module, deterministic in the order of `tests`."""
+    """The whole generated module, deterministic in the order of `tests`.
+
+    Refuses to emit two tests under one name. `pinning.name_for` shortens a
+    name that would push `def NAME(` past the line length, and the way it
+    shortens — dropping the workflow and keeping the step — can in principle
+    collide, because two workflows may share a step name and a locus. Python
+    would not complain: the second definition would silently replace the
+    first, the suite would quietly lose a pin, and `pin certify` would report
+    a smaller number without reporting a problem. A pin that vanishes is the
+    one failure this suite must not have.
+    """
+    seen: dict[str, str] = {}
+    for test in tests:
+        if test.name in seen:
+            raise ValueError(
+                f"two pins compile to the test name {test.name!r}: "
+                f"{seen[test.name]} and {test.pin.corpus}")
+        seen[test.name] = test.pin.corpus
     parts = [_header(tests, version_a, version_b)]
     parts += [render_test(test, version_a, version_b) for test in tests]
     return "\n\n".join(parts)

@@ -1,8 +1,8 @@
 # Pinned-behavior regression tests
 
-**19 of 19 pinned regression tests pass on 2022-11-15 and fail on 2025-03-31.basil.**
+**21 of 21 pinned regression tests pass on 2022-11-15 and fail on 2025-03-31.basil.**
 
-Phase 4 ended with 19 places where a difference between `2022-11-15` and `2025-03-31.basil` reaches a field a declared customer workflow actually reads. This phase compiles each one into a test that passes on the old version and fails on the new one, and then runs them both ways to show that it does.
+Phase 4 ended with 21 places where a difference between `2022-11-15` and `2025-03-31.basil` reaches a field a declared customer workflow actually reads. This phase compiles each one into a test that passes on the old version and fails on the new one, and then runs them both ways to show that it does.
 
 A pinned test is not a test of the API. It is the sentence *this customer's integration depends on this behavior*, written so that a version bump has to argue with it. It goes in the customer's own CI, where it fails the day someone changes the version pin.
 
@@ -16,6 +16,8 @@ A pinned test is not a test of the API. It is the sentence *this customer's inte
 | `test_checkout_session_no_cost_create_paid_session__payment_method_collection` | free_sample_fulfillment | corrupts | holds / breaks | holds / breaks |
 | `test_checkout_session_no_cost_create_zero_total_session__status` | free_sample_fulfillment | unblocks | holds / breaks | holds / breaks |
 | `test_checkout_session_no_cost_retrieve_paid_session__payment_method_collection` | free_sample_fulfillment | corrupts | holds / breaks | holds / breaks |
+| `test_create_account_full_profile__settings_payments_statement_descriptor` | connected_account_onboarding | corrupts | holds / breaks | holds / breaks |
+| `test_create_account_url_only__settings_payments_statement_descriptor` | connected_account_onboarding | corrupts | holds / breaks | holds / breaks |
 | `test_invoice_out_of_band_payment_pay_invoice_out_of_band__amount_paid` | offline_invoice_settlement | corrupts | holds / breaks | holds / breaks |
 | `test_invoice_out_of_band_payment_pay_invoice_out_of_band__paid_out_of_band` | offline_invoice_settlement | corrupts | holds / breaks | holds / breaks |
 | `test_invoice_out_of_band_payment_retrieve_invoice_after_payment__amount_paid` | offline_invoice_settlement | corrupts | holds / breaks | holds / breaks |
@@ -42,6 +44,8 @@ The right-hand column is the assertion message from the live run on `2025-03-31.
 | `checkout_session_no_cost_create_paid_session__payment_method_collection` | `$.body.payment_method_collection` equals "always" | `AssertionError: assert 'if_required' == 'always' - always + if_required` |
 | `checkout_session_no_cost_create_zero_total_session__status` | `checkout_session_no_cost.create_zero_total_session` returns status 400 and not 200 | `assert 200 == 400` |
 | `checkout_session_no_cost_retrieve_paid_session__payment_method_collection` | `$.body.payment_method_collection` equals "always" | `AssertionError: assert 'if_required' == 'always' - always + if_required` |
+| `create_account_full_profile__settings_payments_statement_descriptor` | `$.body.settings.payments.statement_descriptor` equals "WWW.NORTHWINDSUPPLY.COM" | `AssertionError: assert 'REDACTED-0DE8E8B1' == 'WWW.NORTHWINDSUPPLY.COM' - WWW.NORTHWINDSUPPLY.COM + REDACTED-0DE8E8B1` |
+| `create_account_url_only__settings_payments_statement_descriptor` | `$.body.settings.payments.statement_descriptor` equals "WWW.NORTHWINDSUPPLY.COM" | `AssertionError: assert 'NORTHWINDSUPPLY.COM' == 'WWW.NORTHWINDSUPPLY.COM' - WWW.NORTHWINDSUPPLY.COM ? ---- + NORTHWINDSUPPLY.COM` |
 | `invoice_out_of_band_payment_pay_invoice_out_of_band__amount_paid` | `$.body.amount_paid` equals 0 | `AssertionError: assert 2000 == 0` |
 | `invoice_out_of_band_payment_pay_invoice_out_of_band__paid_out_of_band` | `$.body.paid_out_of_band` is present and equals true | `AssertionError: assert <missing> is True` |
 | `invoice_out_of_band_payment_retrieve_invoice_after_payment__amount_paid` | `$.body.amount_paid` equals 0 | `AssertionError: assert 2000 == 0` |
@@ -56,7 +60,7 @@ The right-hand column is the assertion message from the live run on `2025-03-31.
 | `subscription_billing_list_subscription_invoices__data_0_payment_intent` | `$.body.data[0].payment_intent` is present and equals "<id:pi>" | `AssertionError: assert <missing> == '<id:pi>'` |
 | `subscription_billing_preview_upcoming_by_subscription__status` | `subscription_billing.preview_upcoming_by_subscription` returns status 200 and not 404 | `assert 404 == 200` |
 
-Certified live on 2026-11-05T19:01:13+00:00 against `2022-11-15` and `2025-03-31.basil`; the record is [`pins/certification.json`](../pins/certification.json), and the suite is [`pinned/test_pinned_behavior.py`](../pinned/test_pinned_behavior.py), generated from the pins.
+Certified live on 2026-11-06T11:45:37+00:00 against `2022-11-15` and `2025-03-31.basil`; the record is [`pins/certification.json`](../pins/certification.json), and the suite is [`pinned/test_pinned_behavior.py`](../pinned/test_pinned_behavior.py), generated from the pins.
 
 ## The expected values are canonical, not literal
 
@@ -66,7 +70,7 @@ The suite asserts over the same canonicalized responses the differ compares, so 
 
 The suite runs either against the live API or against a committed replay, with the same assertions. Only one of those is evidence.
 
-The **live** run replays the corpus against each version now and asserts against what comes back. Version A's traffic is fetched after the pins were written, so a pin passing on `2022-11-15` is a statement about the API: 19 of 19 held there and broke on `2025-03-31.basil`.
+The **live** run replays the corpus against each version now and asserts against what comes back. Version A's traffic is fetched after the pins were written, so a pin passing on `2022-11-15` is a statement about the API: 21 of 21 held there and broke on `2025-03-31.basil`.
 
 The **recorded** run is a compilation check and is labelled one. The pins were derived from exactly those records, so a pin failing on the recorded B side is true by construction and says nothing about the API. What it does say is worth having in CI: that the generated code still compiles, still runs, and still evaluates the way the certification says it did, with no key and no network.
 

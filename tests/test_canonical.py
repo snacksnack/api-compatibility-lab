@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+
 from compatlab.canonical import (
     build_id_map,
     canonical_record,
@@ -13,6 +15,10 @@ from compatlab.canonical import (
 )
 
 ORIGIN = 1_793_800_000
+# `rec()` stamps every record with this; run_start reads it rather than the
+# response bodies, so the tests above name it instead of a magic number.
+CAPTURED_AT_EPOCH = int(
+    datetime.datetime.fromisoformat("2026-11-04T00:00:00Z").timestamp())
 
 
 def rec(step: str, body: dict, seq: int = 0, status: int = 200,
@@ -76,9 +82,53 @@ def test_non_epoch_integers_and_booleans_pass_through():
     assert out == {"amount": 1099, "count": 3, "livemode": False}
 
 
-def test_run_start_is_the_earliest_response_timestamp():
+def test_run_start_is_the_runs_own_wall_clock():
+    """Not the earliest timestamp in the bodies — the run's own `captured_at`.
+
+    This test asserted the opposite until RC1-618 Stage 2, and its fixtures
+    encoded the same assumption the code did: every body timestamp belonged to
+    an object the run had just created, so body-derived and clock-derived
+    origins agreed and nothing distinguished them.
+    """
     records = [rec("a", {"created": ORIGIN + 500}),
                rec("b", {"created": ORIGIN}, seq=1)]
+    assert run_start(records) == CAPTURED_AT_EPOCH
+
+
+def test_a_reused_server_side_object_does_not_move_the_origin():
+    """The bug that produced 101 spurious breaking findings.
+
+    Stripe deduplicates the ad-hoc Price an InvoiceItem creates, so the second
+    run asking for the same amount and currency gets back a Price created days
+    earlier. basil replaced the InvoiceItem's top-level price with `pricing`
+    and never exposes that object, so only one side carried the stale
+    timestamp — the two runs anchored to different origins and every timestamp
+    in the run shifted by a bucket.
+
+    The asymmetry is the whole point, so the two runs here are deliberately
+    not mirror images: only `stale` carries the reused object.
+    """
+    fresh = [rec("item", {"date": ORIGIN,
+                          "price": {"created": ORIGIN}})]
+    stale = [rec("item", {"date": ORIGIN,
+                          "price": {"created": ORIGIN - 17 * 3600}})]
+    assert run_start(fresh) == run_start(stale) == CAPTURED_AT_EPOCH
+    # And the observable consequence: the same `date` canonicalizes the same
+    # way on both sides, which is what the differ compares.
+    a = canonicalize(fresh[0]["response"]["body"], {}, run_start(fresh))
+    b = canonicalize(stale[0]["response"]["body"], {}, run_start(stale))
+    assert a["date"] == b["date"]
+    # The stale object still reads as older — the fix anchors the origin, it
+    # does not hide the reuse.
+    assert a["price"]["created"] != b["price"]["created"]
+
+
+def test_run_start_falls_back_to_bodies_without_a_captured_at():
+    """Records written before the field existed still canonicalize."""
+    records = [rec("a", {"created": ORIGIN + 500}),
+               rec("b", {"created": ORIGIN}, seq=1)]
+    for record in records:
+        del record["captured_at"]
     assert run_start(records) == ORIGIN
 
 

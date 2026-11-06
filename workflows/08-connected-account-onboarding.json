@@ -1,0 +1,58 @@
+{
+  "workflow": "connected_account_onboarding",
+  "purpose": "Marketplace onboarding. A merchant submits their business profile, the platform creates the connected account, then shows the merchant a confirmation screen: this is the name your buyers will see on their card statement. Support quotes the same string back when a buyer calls about a charge they do not recognize.",
+  "criticality": "high",
+  "owner": "Marketplace onboarding team",
+  "sequence": [
+    {
+      "corpus": "connected_account_onboarding.create_account_full_profile",
+      "reads": [
+        {
+          "locus": "$.body.settings.payments.statement_descriptor",
+          "use": "record",
+          "note": "written to the merchant row at onboarding and treated as settled from then on; support reads it from there rather than from Stripe, so a change at the source is never noticed"
+        },
+        {
+          "locus": "$.body.business_profile.url",
+          "use": "record",
+          "note": "the positive control. Non-null and identical on both versions, so an absence of difference on the descriptor cannot be a business profile that silently failed to apply"
+        }
+      ]
+    },
+    {
+      "corpus": "connected_account_onboarding.retrieve_account",
+      "reads": [
+        {
+          "locus": "$.body.settings.payments.statement_descriptor",
+          "use": "display",
+          "note": "the confirmation screen's headline: 'charges will appear as X'. The merchant approves onboarding against this string"
+        },
+        {
+          "locus": "$.body.settings.card_payments.statement_descriptor_prefix",
+          "use": "display",
+          "note": "shown beneath the descriptor as the prefix applied to per-charge suffixes. Null on 2022-11-15, so the screen renders the row empty and the merchant is told there is no prefix"
+        },
+        {
+          "locus": "$.body.charges_enabled",
+          "use": "decision",
+          "note": "gates whether onboarding finishes or routes the merchant to Stripe's hosted requirements flow"
+        },
+        {
+          "locus": "$.body.business_profile.url",
+          "use": "record",
+          "note": "re-read on the confirmation screen; the control again, on the step the merchant actually sees"
+        }
+      ]
+    },
+    {
+      "corpus": "connected_account_onboarding.create_account_url_only",
+      "reads": [
+        {
+          "locus": "$.body.settings.payments.statement_descriptor",
+          "use": "record",
+          "note": "the same onboarding path for a merchant who supplies no business name. Both versions derive from the url and still disagree: WWW. survives on 2022-11-15 and is stripped on basil"
+        }
+      ]
+    }
+  ]
+}

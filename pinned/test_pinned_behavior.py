@@ -2,7 +2,7 @@
 
 One test per entry in `pins/pins.jsonl`: each pins a behavior that version 2022-11-15 had and
 version 2025-03-31.basil does not, at a response field some declared customer workflow actually
-reads. 19 test(s): 16 equals, 1 non-empty, 2 status.
+reads. 21 test(s): 18 equals, 1 non-empty, 2 status.
 
 Run them against one version at a time. Live, against the API:
 
@@ -99,6 +99,34 @@ def test_checkout_session_no_cost_retrieve_paid_session__payment_method_collecti
     """
     response = canonical("checkout_session_no_cost.retrieve_paid_session")
     assert value_at(response, "$.body.payment_method_collection") == 'always'
+
+
+def test_create_account_full_profile__settings_payments_statement_descriptor(canonical):
+    """$.body.settings.payments.statement_descriptor equals "WWW.NORTHWINDSUPPLY.COM".
+
+    connected_account_onboarding: corrupts. Rule `value-changed`, axis `value`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at
+    `$.body.settings.payments.statement_descriptor` returned "REDACTED-0DE8E8B1".
+    The client reads `$.body.settings.payments.statement_descriptor`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("connected_account_onboarding.create_account_full_profile")
+    expected = 'WWW.NORTHWINDSUPPLY.COM'
+    assert value_at(response, "$.body.settings.payments.statement_descriptor") == expected
+
+
+def test_create_account_url_only__settings_payments_statement_descriptor(canonical):
+    """$.body.settings.payments.statement_descriptor equals "WWW.NORTHWINDSUPPLY.COM".
+
+    connected_account_onboarding: corrupts. Rule `value-changed`, axis `value`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at
+    `$.body.settings.payments.statement_descriptor` returned "NORTHWINDSUPPLY.COM".
+    The client reads `$.body.settings.payments.statement_descriptor`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("connected_account_onboarding.create_account_url_only")
+    expected = 'WWW.NORTHWINDSUPPLY.COM'
+    assert value_at(response, "$.body.settings.payments.statement_descriptor") == expected
 
 
 def test_invoice_out_of_band_payment_pay_invoice_out_of_band__amount_paid(canonical):

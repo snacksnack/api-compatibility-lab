@@ -54,6 +54,35 @@ exercise; 2 former entries disqualified (one account-gated, one reversed
 upstream — see docs/spike-findings.md). Open Phase 0 work: remaining
 title-only entries need their detail pages read before scoring.
 
+**Amended by RC1-618 Stage 2, and this is the amendment that matters most to
+the method.** The spike classified the risk as "some documented breaks are
+account-gated", which reads as a property of particular breaks. It is a
+property of the *provider*, and it can appear after the fact. `POST /v1/accounts`
+now returns 400 on **both** pinned versions — not because either version
+removed it, but because Stripe deprecated Accounts v1 creation and put it
+behind an account-level policy toggle long after basil shipped.
+
+**Pinning two API versions does not isolate the variable it looks like it
+isolates.** A pinned version fixes the contract the server promises; it does
+not fix the policy layer in front of that contract, and a policy changed today
+applies to a version from 2022. Three consequences, all live rather than
+hypothetical:
+
+- A break can become unexercisable *after* being scored, with no changelog
+  entry and no version to blame.
+- The symptom is indistinguishable from a disqualified break: identical
+  behavior on both sides. `total_count` was read that way and was right;
+  this one would have been read that way and been wrong.
+- The corpus is therefore not reproducible from a bare sandbox alone. It
+  depends on account state a future reader has to be told about, which is why
+  the Accounts v1 toggle is recorded in README setup rather than left for
+  someone to rediscover from a 400.
+
+The rule from the spike still holds and now has a second half: ground truth
+must be live-verified per break, **and a failure that reproduces identically
+on both versions must be investigated as a gate before it is recorded as a
+disqualification.**
+
 ## D3. Schema-diff baseline: oasdiff over pinned stripe/openapi snapshots
 
 The baseline the headline is scored against is `oasdiff` (`breaking` and
