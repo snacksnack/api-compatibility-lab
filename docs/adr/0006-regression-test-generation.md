@@ -173,6 +173,15 @@ of the eight documented breaks are still unexercised (M5-M8), so they have no
 pins, and the ground-truth coverage table in the impact report is the place
 that says so. Pins follow the corpus; widening the corpus is Phase 1 work.
 
+**Amended by RC1-618.** The rule stands; the roster shrank. M6 and M8 were
+captured in the cascade and now carry pins, taking the suite from 11 to 19.
+M5 and M7 remain pinless, and Stage 3 established that they are pinless for
+different reasons: M7 waits on a Connect test account, while M5's observable
+is confirmed live but needs a hosted page driven to a failed payment attempt,
+which `pin certify` would have to re-drive on both versions every run (ADR
+0003 D2, docs/m5-probe.md). For M5 "widening the corpus" is not Phase 1 work
+that nobody has done yet — it is work this project has declined.
+
 **Nothing is generated for a `risky` finding that no declared read touches.**
 The pins come from impacts, so a difference nobody declared a read on produces
 no test even where it is real — the impact report counts those separately (8

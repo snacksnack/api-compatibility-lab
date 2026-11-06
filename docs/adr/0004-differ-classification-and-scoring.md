@@ -234,6 +234,17 @@ created ids regardless of shape. Regression tests in
 - **One of the four was not missed by the baseline.** M4's schema-visible half
   is in the spec. Reporting it as a miss would be the easiest available lie
   and the quickest to be caught.
+
+**Amended by RC1-618.** Both counts above have moved, and the shape of the
+remainder changed with them. The cascade's two scenarios exercised M6 and M8,
+so the headline is now 6 of 6 exercised, and a fourth baseline verdict —
+`not-covered` — was added because three unexercised rows were printing `green`
+for endpoints the baseline was never generated over. Stage 3 then read M5's
+detail page and probed it: of D10's four cited causes, "an unread changelog
+detail page" no longer applies to any entry, and M5's cause is now a decision
+about the replay contract rather than a missing capability (ADR 0003 D2,
+docs/m5-probe.md). Two entries remain outside the numerator, and the test
+asserting none of them is ever reported as caught still holds.
 - **`total_count` and the `amount_off` coupon restriction remain out**:
   account-gated and reversed upstream respectively (docs/spike-findings.md).
   The differ does report the `total_count` error-message difference, as a

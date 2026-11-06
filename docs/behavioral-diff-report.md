@@ -12,7 +12,7 @@ Caught 6 of the 6 documented behavioral breaks the corpus exercises (8 in the in
 | M2 | `capture_method` defaults to `automatic_async` | 2024-04-10 | yes | yes | named |
 | M3 | Partial capture no longer creates a Refund | 2025-03-31.basil | yes | yes | green |
 | M4 | `GET /v1/invoices/upcoming` removed outright | 2025-03-31.basil | yes | yes | reported |
-| M5 | Checkout Session create/complete semantics | 2025-03-31.basil | no | no | reported |
+| M5 | Checkout Session defers subscription and invoice to completion | 2025-03-31.basil | no | no | reported |
 | M6 | Checkout `payment_method_collection` defaults to `if_required` | 2023-08-16 | yes | yes | green |
 | M7 | Statement descriptor and prefix auto-populated | 2023-10-16 | no | no | not-covered |
 | M8 | Invoice `amount_paid` reflects out-of-band payments | 2025-03-31.basil | yes | yes | green |
