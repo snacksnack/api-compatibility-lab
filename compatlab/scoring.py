@@ -156,15 +156,15 @@ GROUND_TRUTH: tuple[Break, ...] = (
         summary="Checkout `payment_method_collection` defaults to `if_required`",
         version="2023-08-16",
         confirmed=True,
-        workflows=(),
+        workflows=("checkout_session_no_cost",),
         loci=("$.body.payment_method_collection", "$.status"),
         baseline_endpoint=("POST", "/v1/checkout/sessions"),
         baseline_field="payment_method_collection",
-        note=("Live-confirmed in RC1-618 Stage 1 and narrowed to the default "
-              "flip the detail page names: `always` -> `if_required` on a "
-              "`mode=payment` session create, plus a zero-total session going "
-              "400 -> 200. Both readable on create, so the completion blocker "
-              "is M5's alone. No scenario captures a Checkout Session yet."),
+        note=("Narrowed in RC1-618 Stage 1 to the default flip the detail "
+              "page names: `always` -> `if_required` on a `mode=payment` "
+              "session create, plus a zero-total session going 400 -> 200. "
+              "Both are readable on create, which is why exercising this did "
+              "not need M5's completed session."),
     ),
     Break(
         id="M7",
@@ -182,17 +182,17 @@ GROUND_TRUTH: tuple[Break, ...] = (
         summary="Invoice `amount_paid` reflects out-of-band payments",
         version="2025-03-31.basil",
         confirmed=True,
-        workflows=(),
+        workflows=("invoice_out_of_band_payment",),
         loci=("$.body.amount_paid", "$.body.amount_remaining"),
-        baseline_endpoint=("GET", "/v1/invoices"),
+        baseline_endpoint=("GET", "/v1/invoices/{id}"),
         baseline_field="amount_paid",
-        note=("Live-confirmed in RC1-618 Stage 1 and narrowed: the entry's "
-              "breaking list is removed and added fields, all schema-visible, "
-              "and the one behavioral line is `amount_paid` now counting an "
-              "out-of-band payment (0 -> 2000, with `amount_remaining` "
-              "2000 -> 0). Needs no test clock — the groomed Stage 4 premise "
-              "of a billing-boundary crossing came from the title alone. No "
-              "scenario pays an invoice yet."),
+        note=("Narrowed in RC1-618 Stage 1: the entry's breaking list is "
+              "removed and added fields, all schema-visible, and the one "
+              "behavioral line is `amount_paid` now counting an out-of-band "
+              "payment (0 -> 2000, with `amount_remaining` 2000 -> 0). The "
+              "underlying `invoice_payment` reads 2000 on both versions, so "
+              "only the aggregate disagrees. Needed no test clock, which is "
+              "what retired the groomed Stage 4."),
     ),
 )
 

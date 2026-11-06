@@ -30,6 +30,7 @@ from compatlab.impact import (
     EFFECT_SUMMARY,
     EFFECTS,
     TOLERATES,
+    UNBLOCKS,
     ImpactReport,
     WorkflowImpact,
 )
@@ -42,6 +43,9 @@ from compatlab.workflows import USE_SUMMARY, USES
 _VERDICT_BADGE = {
     BLOCKS: ("#d03b3b", "▲"),
     CORRUPTS: ("#ec835a", "◆"),
+    # Informational rather than a failure tone, and a hollow version of the
+    # corruption glyph: same call-level family, not a wrong value.
+    UNBLOCKS: ("#3f7fb3", "◇"),
     DEGRADES: ("#fab219", "●"),
     TOLERATES: ("#898781", "○"),
     "clear": ("#3d8f5a", "✓"),

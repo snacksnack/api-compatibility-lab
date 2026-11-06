@@ -177,3 +177,44 @@ def test_longer_known_literals_are_replaced_before_shorter_ones():
     out = policy.redact({"text": "Ada Lovelace wrote it"})
     assert out["text"] == \
         f"{policy.redact({'name': 'Ada Lovelace'})['name']} wrote it"
+
+
+def test_a_hosted_page_url_is_dropped_whatever_field_it_arrives_in():
+    """The Checkout Session `url` case (RC1-618).
+
+    The key rules name the fields known to carry a capability URL, so a new
+    endpoint family carrying a new one is a hole by construction. Matching the
+    host closes the class: the field name here is a bare `url`, which no key
+    rule covers and none safely could.
+    """
+    session = {
+        "id": "cs_test_a1Hq7sHLnjaq",
+        "url": "https://checkout.stripe.com/c/pay/cs_test_a1Hq7s#fidnandhYHdW",
+    }
+    assert STRIPE_POLICY.redact(session)["url"] == REDACTED
+    assert [f.rule for f in STRIPE_POLICY.scan(session)] == ["hosted_page_url"]
+    assert STRIPE_POLICY.scan(STRIPE_POLICY.redact(session)) == []
+
+
+def test_the_urls_a_request_sent_survive_redaction():
+    """`success_url` and friends are behavioral signal, not data.
+
+    This is why the fix is a host detector and not a key rule: keys match on
+    underscore tails, so a rule on `url` would swallow all three of these.
+    """
+    sent = {
+        "success_url": "https://example.invalid/success",
+        "cancel_url": "https://example.invalid/cancel",
+        "return_url": "https://example.invalid/auth/return",
+        "url": "/v1/checkout/sessions",
+    }
+    assert STRIPE_POLICY.redact(sent) == sent
+
+
+def test_a_documentation_link_in_an_error_body_is_not_dropped():
+    """Stripe's error messages cite docs; the differ reads those messages."""
+    body = {"error": {"message": "The Checkout Session's total amount due "
+                                 "cannot be zero in `payment` mode. Please "
+                                 "see https://docs.stripe.com/payments/"
+                                 "checkout/no-cost-orders."}}
+    assert STRIPE_POLICY.redact(body) == body

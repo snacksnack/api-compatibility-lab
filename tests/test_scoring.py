@@ -16,6 +16,7 @@ from compatlab.scoring import (
     NOT_COVERED,
     REPORTED,
     Adjudication,
+    Break,
     baseline_verdict,
     evidence,
     exercised_targets,
@@ -65,18 +66,26 @@ def test_the_inventory_matches_the_ground_truth_doc():
             assert item.note, f"{item.id} is unexercised with no reason given"
 
 
-def test_a_live_confirmed_break_with_no_workflow_still_cannot_be_caught():
-    """The Stage 1 trap: a named observable is not an exercised one.
+def test_a_break_with_loci_but_no_declared_workflow_cannot_be_caught():
+    """A named observable is not an exercised one.
 
-    M6 and M8 carry loci now, so `evidence` has something to match on. What
-    keeps them out of the numerator is the empty workflow tuple, and a later
-    stage declaring a scenario is what should move them — not this edit.
+    RC1-618 Stage 1 gave M6 and M8 their loci while no scenario reached them,
+    which made the empty workflow tuple the only thing keeping them out of the
+    numerator. Stage 2 then declared both scenarios and they moved. The
+    invariant is written against a synthetic entry rather than against those
+    ids precisely because which entry is in that state is supposed to change.
     """
-    for item in (BREAK["M6"], BREAK["M8"]):
-        assert item.confirmed and item.loci and not item.workflows
-        report = DiffReport(findings=[finding(
-            locus=item.loci[0], workflow="checkout_card_payment")])
-        assert evidence(report, item) == []
+    pending = Break(
+        id="M99", summary="a confirmed break nothing captures yet",
+        version="2025-03-31.basil", confirmed=True, workflows=(),
+        loci=("$.body.capture_method",),
+        baseline_endpoint=("POST", "/v1/payment_intents"),
+        baseline_field="capture_method", note="no scenario reaches it",
+    )
+    report = DiffReport(findings=[finding(locus="$.body.capture_method")])
+    assert evidence(report, pending) == []
+    # The same finding does catch the entry that declares the workflow.
+    assert len(evidence(report, BREAK["M2"])) == 1
 
 
 def test_a_break_is_caught_only_by_a_finding_in_its_own_workflow():

@@ -16,9 +16,9 @@ from compatlab.classify import RULES
 from compatlab.findings import BENIGN, BREAKING, RISKY, Finding
 from compatlab.impact import (
     ADDITION,
-    BLOCKING_RULES,
     BLOCKS,
     CALL,
+    CALL_LEVEL_RULES,
     CHANGE,
     CONSEQUENCE_SUMMARY,
     CONSEQUENCE_TABLE,
@@ -37,6 +37,8 @@ from compatlab.impact import (
     map_workflow,
     pins,
 )
+from compatlab.impact_html import _VERDICT_BADGE
+from compatlab.impact_report import VERDICT_LABEL
 from compatlab.workflows import DECISION, DISPLAY, RECORD, REQUEST_INPUT, USES, Call, Read, Workflow
 
 
@@ -95,8 +97,21 @@ def test_every_consequence_and_effect_has_a_summary_for_the_report():
     assert set(EFFECT_SUMMARY) == set(EFFECTS)
 
 
-def test_the_blocking_rules_are_classified_as_losses():
-    for rule in BLOCKING_RULES:
+def test_every_consequence_can_be_labelled_and_badged_by_both_renderers():
+    """A new consequence must not reach a renderer as a KeyError.
+
+    Adding `unblocks` in RC1-618 broke the HTML report at the badge lookup,
+    which only the published-artifact test caught, and only because a real
+    workflow happened to hit it.
+    """
+    for consequence in CONSEQUENCES:
+        assert consequence in VERDICT_LABEL, consequence
+        assert consequence in _VERDICT_BADGE, consequence
+    assert "clear" in VERDICT_LABEL and "clear" in _VERDICT_BADGE
+
+
+def test_the_call_level_rules_are_classified_as_losses():
+    for rule in CALL_LEVEL_RULES:
         assert EFFECT_OF_RULE[rule] == LOSS
 
 

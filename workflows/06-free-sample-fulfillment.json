@@ -1,0 +1,53 @@
+{
+  "workflow": "free_sample_fulfillment",
+  "purpose": "Storefront checkout for promotional orders. Redirects the shopper to the hosted page, then fulfills on return. The same code path handles a paid cart and a cart a 100%-off promo has taken to zero.",
+  "criticality": "high",
+  "owner": "Storefront team",
+  "sequence": [
+    {
+      "corpus": "checkout_session_no_cost.create_paid_session",
+      "reads": [
+        {
+          "locus": "$.body.payment_method_collection",
+          "use": "decision",
+          "note": "branches the fulfillment arming: `always` means a payment method will be collected and the order is armed to wait for a PaymentIntent, anything else routes to the no-payment path"
+        },
+        {
+          "locus": "$.body.amount_total",
+          "use": "record",
+          "note": "written to the order row as the amount the shopper is expected to pay"
+        },
+        {
+          "locus": "$.body.url",
+          "use": "display",
+          "note": "the hosted page the shopper is redirected to. Declared because it is read, and flagged as a blind spot: redaction drops this value at capture, so the lab can never report a difference on it"
+        }
+      ]
+    },
+    {
+      "corpus": "checkout_session_no_cost.retrieve_paid_session",
+      "reads": [
+        {
+          "locus": "$.body.payment_status",
+          "use": "decision",
+          "note": "the fulfillment gate: anything other than `paid` leaves the order unfulfilled"
+        },
+        {
+          "locus": "$.body.payment_method_collection",
+          "use": "decision",
+          "note": "read again on return, because the arming decision made at create is not trusted across the redirect"
+        },
+        {
+          "locus": "$.body.payment_intent",
+          "use": "record",
+          "note": "stored against the order so finance can match the settlement later; the no-payment path expects this to be absent"
+        }
+      ]
+    },
+    {
+      "corpus": "checkout_session_no_cost.create_zero_total_session",
+      "reads": [],
+      "note": "Declared with no reads on purpose. On 2022-11-15 this call is a 400 and the storefront's promo path dead-ends in its error handler; on basil the session is created. A status change is a property of the call rather than of any field, so it lands here without a declared locus."
+    }
+  ]
+}

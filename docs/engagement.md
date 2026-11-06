@@ -3,8 +3,8 @@
 Written the way the work would be papered for a customer: the statement of
 work up front, the findings in the middle, and the artifacts they keep at the
 end. The customer here is the reference integration this repository ships as
-its fixture: five declared integration workflows in
-[`workflows/`](../workflows), exercised by the four capture scenarios in
+its fixture: seven declared integration workflows in
+[`workflows/`](../workflows), exercised by the six capture scenarios in
 [`scenarios/`](../scenarios), running against Stripe's dated API versions
 `2022-11-15` and `2025-03-31.basil`. Every figure below traces to a committed
 artifact; nothing is an estimate.
@@ -56,14 +56,14 @@ out.
 The customer's own first instinct, and the industry default: diff the two
 OpenAPI specs. `oasdiff` in breaking mode over Stripe's published snapshots at
 the two pinned commits reports **254,576 breaking entries** across the pair,
-**19,349** inside the paths this integration touches, and **12,313** on the
-twenty endpoints its traffic actually calls.
+**26,422** inside the paths this integration touches, and **17,495** on the
+twenty-seven endpoints its traffic actually calls.
 
-11,270 of those 12,313 are one rule, `response-property-enum-value-added` —
+15,916 of those 17,495 are one rule, `response-property-enum-value-added` —
 largely a new country or currency surfacing at every nested `anyOf` path that
 can reach it.
 
-On the four documented behavioral breaks this corpus exercises, the same
+On the six documented behavioral breaks this corpus exercises, the same
 baseline was:
 
 | Break | Baseline verdict |
@@ -72,33 +72,35 @@ baseline was:
 | `capture_method` defaults to `automatic_async` | named the field, not the behavior |
 | Partial capture no longer creates a Refund | no entry at all |
 | `GET /v1/invoices/upcoming` removed outright | reported |
+| Checkout `payment_method_collection` defaults to `if_required` | no entry at all |
+| Invoice `amount_paid` reflects out-of-band payments | no entry at all |
 
 So the baseline does not hand a reader a green light to trust. It hands them a
-haystack, and three of the four needles are not in it. That is the project's
+haystack, and five of the six needles are not usefully in it. That is the project's
 whole premise, and it is a property of the specs rather than of this code —
 which is why the lab scores that comparison as **advisory** and never gates on
 it.
 
 ## What the replay found
 
-Capture runs the four scenarios in order against `2022-11-15`, resolving each
-step's references from the previous responses: 29 calls over 20 endpoints,
-three of them deliberate errors. Replay re-executes the identical requests against
+Capture runs the six scenarios in order against `2022-11-15`, resolving each
+step's references from the previous responses: 38 calls over 27 endpoints,
+four of them deliberate errors. Replay re-executes the identical requests against
 `2025-03-31.basil`. The differ compares canonical forms — ids normalized by
 provenance, timestamps day-bucketed, volatile keys tokenized — so the only
 differences that survive are the ones a client could see.
 
-- **Caught 4 of the 4 documented behavioral breaks the corpus exercises** (8
-  in the inventory; the other four are not reachable by this traffic and are
+- **Caught 6 of the 6 documented behavioral breaks the corpus exercises** (8
+  in the inventory; the other two are not reachable by this traffic and are
   reported as *unexercised*, never as *passed*).
-- **93 findings** over 16 of the 29 steps: 25 breaking, 44 risky, 24 benign,
+- **194 findings** over 24 of the 38 steps: 62 breaking, 106 risky, 26 benign,
   each naming the rule that classified it.
-- **0 false breaks.** All 25 breaking findings are adjudicated by hand against
-  the changelog for the span: 25 documented, 0 undocumented, 0 false-break.
+- **0 false breaks.** All 62 breaking findings are adjudicated by hand against
+  the changelog for the span: 62 documented, 0 undocumented, 0 false-break.
   Read that as *no false breaks observed* rather than a rate measured at
-  scale — the denominator is 25 findings over 29 steps.
+  scale — the denominator is 62 findings over 38 steps.
 - **A/A on `2022-11-15` and B/B on `2025-03-31.basil` both report zero
-  mismatches** across all 29 records. Without that control a non-empty diff
+  mismatches** across all 38 records. Without that control a non-empty diff
   proves nothing about the version pair — though the control only proves the
   absence of *asymmetric* noise, and one bug that corrupted both sides
   identically got past it ([ADR 0003](adr/0003-replay-and-canonicalization.md)).
@@ -112,21 +114,23 @@ A finding is a fact about the API. A customer wants a fact about their own
 code, so each workflow declares the calls it makes and the fields it reads,
 and the mapper joins the two.
 
-Upgrading affects **4 of the 5 workflows**:
+Upgrading affects **6 of the 7 workflows**:
 
 | Workflow | Criticality | Verdict | What the customer sees |
 |---|---|---|---|
 | `subscription_renewal_billing` | high | **BLOCKED** | the sequence stops; a call it depends on no longer works |
 | `guest_checkout_capture` | high | **CORRUPTED** | every call succeeds and a value it decides on has changed |
 | `nightly_refund_reconciliation` | high | **CORRUPTED** | every call succeeds and a value it records has changed |
+| `free_sample_fulfillment` | high | **CORRUPTED** | it branches on a value it has never been handed, and a promo call the old version rejected now succeeds |
+| `offline_invoice_settlement` | high | **CORRUPTED** | it posts money to the ledger as settled through Stripe that never moved through Stripe |
 | `api_error_alerting` | medium | **DEGRADED** | still works; something it depends on reads differently |
 | `customer_sync_export` | medium | clear | unaffected |
 
-The two CORRUPTED workflows are the point of the engagement. Nothing errors,
+The four CORRUPTED workflows are the point of the engagement. Nothing errors,
 no alert fires, and the numbers they write down are wrong — which is the class
 of break a status-code smoke test and a schema diff both miss.
 
-**Workflow-mapping precision: 100% (13 of 13 claims).** Each claim is
+**Workflow-mapping precision: 100% (21 of 21 claims).** Each claim is
 re-derived from the replay record by a checker that does not read the rule
 table, so a wrong rule and a wrong claim cannot agree with each other.
 Precision here means *the claims made are right*, not *every impact was
@@ -157,14 +161,14 @@ def test_partial_capture_reconcile_retrieve_charge_after_partial__data_0_amount_
     assert value_at(response, "$.body.data[0].amount_refunded") == 3000
 ```
 
-**11 of 11 pass on `2022-11-15` and fail on `2025-03-31.basil`**, certified by
+**19 of 19 pass on `2022-11-15` and fail on `2025-03-31.basil`**, certified by
 a live double run. Three things make that number mean something:
 
 - A pinned test has **three outcomes, not two**: it can hold, it can break, or
   the replay can never have reached its step. Only the middle one is a pinned
   break, and the certification gate refuses a count that rests on an
   unreached step — otherwise one workflow dying at its third call turns every
-  test behind it red and reads as 11 of 11 off a run that proved nothing.
+  test behind it red and reads as 19 of 19 off a run that proved nothing.
 - **Fail-on-B is cheap; pass-on-A is the evidence.** Version A's traffic is
   fetched after the pins were written, so a pin holding there is a statement
   about the API rather than about the file it came from. The offline run
@@ -213,16 +217,18 @@ gates against.
 
 ## What this does not say
 
-- **Four of the eight documented breaks in the inventory are unexercised.**
+- **Two of the eight documented breaks in the inventory are unexercised.**
   They are listed, reported as unexercised, and excluded from the recall
-  denominator. Widening the corpus to reach them is tracked as RC1-618, and it
-  is also the honest answer to "is 4 of 4 a good score" — it is 4 of 4 of what
-  this traffic can reach.
+  denominator. Widening the corpus to reach them is tracked as RC1-618, which
+  took the exercised count from four to six and is the honest answer to "is
+  6 of 6 a good score" — it is 6 of 6 of what this traffic can reach. The two
+  that remain both need something a bare sandbox cannot do: a completed
+  hosted Checkout page (M5) and a Connect test account (M7).
 - **The inventory is declared, not discovered.** The customer describes the
   calls they make and the fields they read. A read they forgot to declare is a
   break this report will not mention, and no amount of precision changes that.
   Deriving the inventory from a customer's code is the obvious next phase.
 - **One version pair, one integration.** The method generalizes; this
   measurement does not. The numbers above describe `2022-11-15` to
-  `2025-03-31.basil` for five workflows, and the value of any of them on
+  `2025-03-31.basil` for seven workflows, and the value of any of them on
   another pair is unknown until it is run.

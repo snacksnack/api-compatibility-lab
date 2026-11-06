@@ -94,6 +94,27 @@ _SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 _ACCOUNT_RE = re.compile(r"\bacct_[A-Za-z0-9]{8,}\b")
 _STRIPE_KEY_RE = re.compile(r"\b(?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]{8,}\b")
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._\-]{8,}")
+# Stripe's hosted pages. The session or invoice key rides in the path or the
+# `#fid…` fragment, so the link alone is a capability: anyone holding it can
+# pay the session or read the invoice.
+#
+# Matched by HOST, not by field name, and that is the whole point. The key
+# rules in `policies.py` enumerate the fields known to carry one of these
+# (`receipt_url`, `hosted_invoice_url`, `invoice_pdf`), which makes a new
+# endpoint family carrying a NEW such field a hole by construction. The
+# Checkout Session's `url` was exactly that hole, found in RC1-618 before the
+# first Checkout capture: it survived `redact` untouched and `scan` reported
+# clean. A key rule could not have closed it — keys match on underscore tails
+# (core.tails), so a rule on `url` would also swallow `success_url`,
+# `cancel_url` and `return_url`, whose values are behavioral signal.
+#
+# `docs.stripe.com` and bare `stripe.com` are deliberately excluded: they
+# appear in error-message hint text, which the differ reads on the
+# error_semantics axis.
+_HOSTED_PAGE_RE = re.compile(
+    r"https?://(?:checkout|pay|billing|invoice|connect|verify|files)"
+    r"\.stripe\.com/\S+"
+)
 
 _SURROGATE_RES = (
     re.compile(r"^redacted-[0-9a-f]{8}@example\.invalid$"),
@@ -153,7 +174,12 @@ class Detector:
 
 # Order matters: a card number also matches the loose phone pattern, so cards
 # and keys are detected first and the phone detector rejects Luhn-valid runs.
+# A hosted-page URL is dropped whole before any of them reads inside it.
 DETECTORS: tuple[Detector, ...] = (
+    # First: a hosted-page URL can contain a digit run or an `acct_` id, and a
+    # narrower detector nibbling at its middle would leave the capability URL
+    # in place around the hole it punched.
+    Detector("hosted_page_url", SECRET, DROP, STRING, _HOSTED_PAGE_RE),
     Detector("api_key", SECRET, DROP, STRING, _STRIPE_KEY_RE),
     Detector("bearer_token", SECRET, DROP, STRING, _BEARER_RE),
     Detector("email", PII, SURROGATE, EMAIL, _EMAIL_RE),

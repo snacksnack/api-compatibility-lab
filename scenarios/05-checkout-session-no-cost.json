@@ -1,0 +1,44 @@
+{
+  "workflow": "checkout_session_no_cost",
+  "description": "Create a priced Checkout Session, read it back, then create a zero-total one.",
+  "targets": ["M6"],
+  "note": "2023-08-16 enabled no-cost orders for one-time payments in Checkout, and the detail page puts the break in a subordinate clause: the change moves payment_method_collection from always to if_required. Nothing in the schema changes. The zero-total create is the second half of the same entry — rejected outright on 2022-11-15, accepted on basil — and both halves are readable without completing a session, which is what keeps this scenario independent of M5's hosted-page blocker (docs/m6-m8-probe.md).",
+  "steps": [
+    {
+      "step": "create_paid_session",
+      "method": "POST",
+      "path": "/v1/checkout/sessions",
+      "body": {
+        "mode": "payment",
+        "line_items[0][price_data][currency]": "usd",
+        "line_items[0][price_data][unit_amount]": "1099",
+        "line_items[0][price_data][product_data][name]": "Compatibility Lab tee",
+        "line_items[0][quantity]": "1",
+        "success_url": "https://example.invalid/checkout/success",
+        "cancel_url": "https://example.invalid/checkout/cancel"
+      },
+      "note": "The observable: payment_method_collection is always on A and if_required on basil, with no request-side value to explain it."
+    },
+    {
+      "step": "retrieve_paid_session",
+      "method": "GET",
+      "path": "/v1/checkout/sessions/{{create_paid_session.id}}",
+      "note": "What an integration reads when the shopper returns from the hosted page."
+    },
+    {
+      "step": "create_zero_total_session",
+      "method": "POST",
+      "path": "/v1/checkout/sessions",
+      "body": {
+        "mode": "payment",
+        "line_items[0][price_data][currency]": "usd",
+        "line_items[0][price_data][unit_amount]": "0",
+        "line_items[0][price_data][product_data][name]": "Compatibility Lab sample",
+        "line_items[0][quantity]": "1",
+        "success_url": "https://example.invalid/checkout/success",
+        "cancel_url": "https://example.invalid/checkout/cancel"
+      },
+      "note": "Last on purpose: it is a 400 on A, so nothing may reference its id. On basil the session exists with amount_total 0 and payment_intent null."
+    }
+  ]
+}

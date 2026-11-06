@@ -149,8 +149,18 @@ payment, not by the absence of a diff.
 
 ## What it does not promise
 
-Two entries went from title-only to live-confirmed. Neither is caught, and
-`caught 4 of 4 exercised (M=8)` is still the published number — raising the
-exercised count is the capture-and-cascade work this stage was meant to scope,
-not do. M5 (hosted-page completion) and M7 (Connect enablement) keep their
-external blockers and were not probed.
+Two entries went from title-only to live-confirmed. Neither was caught when
+this was written, and `caught 4 of 4 exercised (M=8)` was still the published
+number: raising the exercised count was the capture-and-cascade work this
+stage was meant to scope, not do. M5 (hosted-page completion) and M7 (Connect
+enablement) keep their external blockers and were not probed.
+
+**Followed through in the same ticket.** Both observables were captured into
+`scenarios/05-checkout-session-no-cost.json` and
+`scenarios/06-invoice-out-of-band-payment.json`, and the published number is
+now **caught 6 of 6 exercised (M=8)**. Neither needed anything this probe did
+not already establish. The cascade is in the PR for that work; what it cost
+beyond the capture was three model bugs the new traffic exposed — a redaction
+hole on the Checkout `url` (ADR 0002 D4a), the A/A control diffing
+`duration_ms` (ADR 0003 D6), and `status-class-changed` reading a 400 -> 200 as
+a workflow that stops (ADR 0005 D4).

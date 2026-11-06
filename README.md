@@ -18,26 +18,28 @@ new one. Those six results are scored as an eval suite on every run and
 published as Datadog gauges behind a dashboard and three monitors, and the
 whole thing is papered as an engagement in
 [`docs/engagement.md`](docs/engagement.md). It is still not a finished tool:
-the corpus exercises four of the eight documented breaks in the inventory
-(RC1-618), and the integration inventory is declared by the customer rather
-than discovered from their code.
+the corpus exercises six of the eight documented breaks in the inventory, and
+the two that remain each need something a bare test-mode sandbox cannot do
+(a completed hosted Checkout page, a Connect test account); the integration
+inventory is declared by the customer rather than discovered from their code.
 
-> **Caught 4 of the 4 documented behavioral breaks the corpus exercises** (8
-> in the inventory). The schema-diff baseline gave no usable warning on three
-> of them — two with no entry at all, one naming the field but not the
-> behavior — while reporting 12,313 breaking changes on the same twenty
-> endpoints. 25 findings classified breaking, every one adjudicated against
+> **Caught 6 of the 6 documented behavioral breaks the corpus exercises** (8
+> in the inventory). The schema-diff baseline gave no usable warning on five
+> of them — four with no entry at all, one naming the field but not the
+> behavior — while reporting 17,495 breaking changes on the same twenty-seven
+> endpoints. 62 findings classified breaking, every one adjudicated against
 > Stripe's changelog, 0 false breaks.
 >
-> **Of five declared customer workflows, one stops outright, two keep running
-> and go silently wrong, one is visibly degraded, and one is unaffected.** 13
-> impact claims, all 13 confirmed against the replay record by a checker that
-> does not read the classifier's rule table.
+> **Of seven declared customer workflows, one stops outright, four keep
+> running and go silently wrong, one is visibly degraded, and one is
+> unaffected.** 21 impact claims, all 21 confirmed against the replay record
+> by a checker that does not read the classifier's rule table.
 >
-> **11 of 11 generated regression tests pass on `2022-11-15` and fail on
+> **19 of 19 generated regression tests pass on `2022-11-15` and fail on
 > `2025-03-31.basil`**, certified by a live double run — one test per place a
-> declared customer read is blocked or corrupted, each failing on its own
-> assertion rather than on a step the replay never reached.
+> declared customer read is blocked, corrupted or newly reachable, each
+> failing on its own assertion rather than on a step the replay never
+> reached.
 >
 > Scorecard: [`docs/behavioral-diff-report.md`](docs/behavioral-diff-report.md).
 > Impact report: [`docs/impact-report.md`](docs/impact-report.md), and the
@@ -78,8 +80,8 @@ Stripe's own published OpenAPI snapshots at pinned commits.
   the six scored dimensions, why a deterministic subject records `model: null`
   and zero spend, and why there is no new SLO.
 - [`docs/m6-m8-probe.md`](docs/m6-m8-probe.md) — the two title-only
-  inventory entries read and probed live: what each break actually is, the
-  A/B tables, and the two assumptions the reading retired.
+  inventory entries read and probed live, then captured: what each break
+  actually is, the A/B tables, and the two assumptions the reading retired.
 - [`docs/corpus-coverage.md`](docs/corpus-coverage.md) — what the captured
   corpus reaches, including how many of the eight documented breaks it can
   exercise.
@@ -106,7 +108,7 @@ uv run --group evals python -m evals   # score the six quality dimensions
 
 `capture` runs the workflows in [`scenarios/`](scenarios) against version A,
 in order, resolving each step's `{{step.field}}` references from the previous
-responses. 29 calls across four workflows today, three of them deliberate
+responses. 38 calls across six workflows today, four of them deliberate
 errors. It refuses to finish quietly: it scans what it just wrote and exits
 non-zero if anything survived.
 
@@ -133,11 +135,12 @@ PASS: zero infrastructure-caused mismatches
 ```
 
 Both `2022-11-15` and `2025-03-31.basil` controls are silent. The real A/B
-replay then differs on 16 of 29 steps, and all four live-confirmed
-ground-truth breaks are visible in it — including `capture_method` going
-`automatic` to `automatic_async`, and a partial capture that produced a
+replay then differs on 24 of 38 steps, and all six ground-truth breaks this
+corpus reaches are visible in it — including `capture_method` going
+`automatic` to `automatic_async`, a partial capture that produced a
 3,000-cent refund on the old version and none on the new one while the schema
-stayed identical. Details in
+stayed identical, and an invoice settled by wire whose `amount_paid` reads 0
+on the old version and 2,000 on the new one. Details in
 [ADR 0003](docs/adr/0003-replay-and-canonicalization.md), including what a
 control run does *not* prove.
 
@@ -187,7 +190,7 @@ generously, on field name within endpoint: the claim is that the baseline
 missed things, and a loose match makes that harder to claim, not easier.
 
 Two things about that run matter as much as the score. It reported **254,576
-breaking changes** over the whole spec pair, 11,270 of the 12,313 on the
+breaking changes** over the whole spec pair, 15,916 of the 17,495 on the
 corpus's endpoints from a single rule — a new country or currency surfacing at
 every nested `anyOf` path that can reach it. Diffing these two specs does not
 hand a reader a green light they can trust; it hands them a haystack. And on
@@ -256,8 +259,8 @@ key:
 The inventory is also what resolves a `risky` finding. Phase 3 calls a
 difference risky when it depends on how the client was written — a strict
 deserializer, an exhaustive switch, a dependence on list position — and a
-declared read is exactly that missing fact. 44 of the 93 findings are risky,
-and three of them become concrete here: `payment_method_types` gaining four
+declared read is exactly that missing fact. 106 of the 194 findings are risky,
+and a handful become concrete here: `payment_method_types` gaining four
 members corrupts a storefront that renders a tile per method, and no finding
 on its own could say so.
 
@@ -300,7 +303,7 @@ The defining property is not assertable from the repository, so it is run.
 generated suite over the result, twice, and records what every test did:
 
 ```
-11 of 11 pinned regression tests pass on 2022-11-15 and fail on 2025-03-31.basil
+19 of 19 pinned regression tests pass on 2022-11-15 and fail on 2025-03-31.basil
 ```
 
 Three things keep that number from being easy.
@@ -309,7 +312,7 @@ Three things keep that number from being easy.
   the replay can never have reached its step — and only the middle one is a
   pinned break. Workflows are sequences, and one that dies at its third call
   turns every test behind it red without exercising a single pin, which is how
-  a count of "tests that failed on B" would read 11 of 11 off a run that
+  a count of "tests that failed on B" would read 19 of 19 off a run that
   proved nothing.
 - **Fail-on-B is cheap; pass-on-A is the evidence.** Version A's traffic is
   fetched after the pins were written, so a pin holding there is a statement

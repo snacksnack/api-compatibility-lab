@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from compatlab.findings import MISSING
-from compatlab.impact import BLOCKS, Impact, ImpactReport
+from compatlab.impact import BLOCKS, UNBLOCKS, Impact, ImpactReport
 from compatlab.loci import value_at
 from compatlab.workflows import REQUEST_INPUT
 
@@ -147,9 +147,25 @@ def check(impact: Impact, pair: dict | None, canon_a: dict | None,
         if status_a is None or status_b is None or \
                 status_a // 100 == status_b // 100:
             return Check(**common, verdict=UNCONFIRMED,
-                         detail=(f"claimed to block on a changed status class, "
-                                 f"but the recorded statuses are {status_a} and "
+                         detail=(f"claimed a changed status class, but the "
+                                 f"recorded statuses are {status_a} and "
                                  f"{status_b}"))
+        # The direction is checked, not just the change. Until RC1-618 it was
+        # not, so this function independently confirmed a claim that the
+        # workflow stopped at a call that had started working. An independent
+        # check that shares the assumption it was meant to test is not one.
+        failed_a, failed_b = status_a >= 400, status_b >= 400
+        expected = UNBLOCKS if (failed_a and not failed_b) else BLOCKS
+        if impact.consequence != expected:
+            return Check(**common, verdict=UNCONFIRMED,
+                         detail=(f"claimed {impact.consequence} but the call "
+                                 f"returned {status_a} on A and {status_b} on "
+                                 f"B, which is {expected}"))
+        if expected == UNBLOCKS:
+            return Check(**common, verdict=CONFIRMED,
+                         detail=(f"the call returned {status_a} on A and "
+                                 f"{status_b} on B, so a request the old "
+                                 f"version rejected now succeeds"))
         return Check(**common, verdict=CONFIRMED,
                      detail=(f"the call returned {status_a} on A and {status_b} "
                              f"on B, so the workflow stops here"))

@@ -32,6 +32,7 @@ from compatlab.impact import (
     EFFECT_OF_RULE,
     EFFECT_SUMMARY,
     EFFECTS,
+    UNBLOCKS,
     ImpactReport,
     WorkflowImpact,
     pins,
@@ -42,6 +43,7 @@ from compatlab.workflows import USE_SUMMARY, USES, Workflow
 VERDICT_LABEL = {
     BLOCKS: "BLOCKED",
     CORRUPTS: "CORRUPTED",
+    UNBLOCKS: "UNBLOCKED",
     "degrades": "DEGRADED",
     "tolerates": "TOLERATED",
     "clear": "clear",
@@ -76,6 +78,14 @@ def headline(report: ImpactReport, verification: Verification) -> str:
             f"every call still succeeds and a value "
             f"{'it decides' if one else 'they decide'} or "
             f"{'records' if one else 'record'} on has changed.")
+    unblocked = report.by_verdict(UNBLOCKS)
+    if unblocked:
+        one = len(unblocked) == 1
+        parts.append(
+            f"{len(unblocked)} {'reaches' if one else 'reach'} a path "
+            f"{'it' if one else 'they'} could not reach before "
+            f"({_names(unblocked)}): a call the old version rejected now "
+            f"succeeds.")
     clear = report.by_verdict("clear")
     if clear:
         parts.append(

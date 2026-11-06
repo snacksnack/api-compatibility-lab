@@ -101,23 +101,27 @@ spike (docs/spike-findings.md) live-verified entries where noted.
 | 3 | Partial capture/cancel creates no Refund | basil | **confirmed live** |
 | 4 | `GET /v1/invoices/upcoming` removed outright (both call shapes 404) | basil | **confirmed live** |
 | 5 | Checkout Session create/complete semantics (observable: no invoice until `complete`) | basil | pending (full flow needs a completed session) |
-| 6 | Checkout `payment_method_collection` defaults to `if_required` (observables: `$.body.payment_method_collection`, and `$.status` on a zero-total session) | 2023-08-16 | **confirmed live**, not exercised |
+| 6 | Checkout `payment_method_collection` defaults to `if_required` (observables: `$.body.payment_method_collection`, and `$.status` on a zero-total session) | 2023-08-16 | **confirmed live, exercised, caught** |
 | 7 | Statement descriptor auto-population | 2023-10-16 | pending (needs Connect test account) |
-| 8 | Invoice `amount_paid` reflects out-of-band payments (observables: `$.body.amount_paid`, `$.body.amount_remaining`) | basil | **confirmed live**, not exercised |
+| 8 | Invoice `amount_paid` reflects out-of-band payments (observables: `$.body.amount_paid`, `$.body.amount_remaining`) | basil | **confirmed live, exercised, caught** |
 
-**M = 8 (6 confirmed live, 4 exercised and caught, 2 confirmed but not yet
-exercised, 2 pending exercise).**
+**M = 8 (6 confirmed live, 6 exercised and caught, 2 pending exercise).**
 
 RC1-618 Stage 1 read the two title-only M entries' detail pages and probed
 them on both versions. Both survived and both narrowed, so M did not move:
 M6's break is the `payment_method_collection` default flip rather than the
 no-cost order itself, and M8's is the `amount_paid` aggregate rather than
 partial-payment support, whose whole removed-and-added-field surface is
-schema-visible. Confirmed is not exercised: no scenario captures a Checkout
-Session or pays an invoice, so both stay out of the numerator *and* out of the
-exercised denominator, and a test asserts that a confirmed break with no
-declared workflow cannot be reported as caught. Full probe record, including
-the two Stage 4 assumptions it retired, in docs/m6-m8-probe.md.
+schema-visible. Full probe record, including the two Stage 4 assumptions it
+retired, in docs/m6-m8-probe.md.
+
+The corpus was then widened to reach both: `scenarios/05-checkout-session-no-cost.json`
+and `scenarios/06-invoice-out-of-band-payment.json`, which took the exercised
+count from four to six and the corpus from 20 endpoint templates to 27. The
+two that remain each need something a bare test-mode sandbox cannot do — a
+completed hosted Checkout page (M5) and a Connect test account (M7) — so they
+stay reported as *unexercised*, and the test asserting a break with no
+declared workflow cannot be reported as caught still holds for them.
 
 **Phase 3 (RC1-608) scored this inventory mechanically.** All four
 live-confirmed breaks are caught by the differ; the four pending entries are
@@ -131,20 +135,31 @@ baseline said about each one, from `baseline/schema-diff-index.jsonl`:
 | M2 | yes (breaking) | **named only** | `automatic_async` is now a possible value of `capture_method` — not that it became the default |
 | M3 | yes (breaking) | **green** | `amount_refunded` is not named once on `GET /v1/charges` |
 | M4 | yes (breaking) | reported | `api-path-removed-without-deprecation` on `GET /v1/invoices/upcoming` |
+| M6 | yes (breaking) | **green** | `payment_method_collection` is not named once on `POST /v1/checkout/sessions` |
+| M8 | yes (breaking) | **green** | neither `amount_paid` nor `amount_remaining` is named once on `GET /v1/invoices/{id}` |
 
-So three of the four caught breaks had no usable warning in a schema diff that
-reported 12,313 breaking changes on the same twenty endpoints. M4 is the one
-with a schema-visible half, and is counted as caught by both. Scorecard in
+So five of the six caught breaks had no usable warning in a schema diff that
+reported 17,495 breaking changes on the same twenty-seven endpoints. M4 is the
+one with a schema-visible half, and is counted as caught by both. Scorecard in
 docs/behavioral-diff-report.md; methodology in ADR 0004.
 
-For the unexercised entries the scorecard now prints a fourth verdict,
+For the unexercised entries the scorecard prints a fourth verdict,
 `not-covered`, rather than `green`. The baseline's path scope is derived from
-the endpoints the corpus calls, so `POST /v1/checkout/sessions` (M5, M6) and
-`GET /v1/account` (M7) were never diffed at all, and reporting them as green
-credited the schema diff with a silence it was never asked for. M8's `green`
-is a real one: `amount_paid` and `amount_remaining` are not named once in the
-702 entries `oasdiff` produces for `GET /v1/invoices`, which does carry
-`paid` and `payment_intent` entries.
+the endpoints the corpus calls, so an endpoint no captured call reaches was
+never diffed at all, and reporting it as green credits the schema diff with a
+silence it was never asked for. Only M7's `GET /v1/account` is in that state
+now; widening the corpus brought Checkout Sessions into scope, which turned
+M6's row into a real **green** and M5's into **reported** — the baseline does
+have `response-required-property-removed` on the `subscription` field M5
+depends on, so the one unexercised Checkout break is the one with a
+schema-visible half.
+
+M6 and M8 are the third and fourth fully green catches: `payment_method_collection`
+is not named once in the breaking entries for `POST /v1/checkout/sessions`,
+and `amount_paid` and `amount_remaining` are not named once in the 702
+`oasdiff` produces for the Invoice object — which does carry `paid` and
+`payment_intent` entries. In both cases the schema diff reports the half that
+moved a field and says nothing about the half that moved a number.
 
 M3 and M4 were confirmed by the RC1-607 dual replay: partial capture produced
 a 3,000-cent Refund on A and none on basil (`count: 1 -> 0`,

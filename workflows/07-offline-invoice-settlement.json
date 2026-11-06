@@ -1,0 +1,63 @@
+{
+  "workflow": "offline_invoice_settlement",
+  "purpose": "Marks invoices settled by wire or check as paid outside Stripe, then posts what was collected to the general ledger and decides who still owes money. System of record for cash receipts; the dunning queue is driven off the same read.",
+  "criticality": "high",
+  "owner": "Finance engineering",
+  "sequence": [
+    {
+      "corpus": "invoice_out_of_band_payment.finalize_invoice",
+      "reads": [
+        {
+          "locus": "$.body.amount_due",
+          "use": "record",
+          "note": "the receivable, posted when the invoice is issued"
+        },
+        {
+          "locus": "$.body.status",
+          "use": "decision",
+          "note": "only an `open` invoice is eligible to be marked settled offline"
+        }
+      ]
+    },
+    {
+      "corpus": "invoice_out_of_band_payment.pay_invoice_out_of_band",
+      "reads": [
+        {
+          "locus": "$.body.paid_out_of_band",
+          "use": "decision",
+          "note": "the confirmation that Stripe recorded this as money that did not move through Stripe; false means the job raises rather than posting"
+        },
+        {
+          "locus": "$.body.amount_paid",
+          "use": "record",
+          "note": "written to the cash-receipts journal as the amount Stripe reports collected"
+        }
+      ]
+    },
+    {
+      "corpus": "invoice_out_of_band_payment.retrieve_invoice_after_payment",
+      "reads": [
+        {
+          "locus": "$.body.amount_paid",
+          "use": "record",
+          "note": "re-read at end of day and reconciled against the Stripe payout file; the job treats this as cash settled through Stripe"
+        },
+        {
+          "locus": "$.body.amount_remaining",
+          "use": "decision",
+          "note": "greater than zero keeps the invoice in the dunning queue; zero removes it"
+        },
+        {
+          "locus": "$.body.paid",
+          "use": "decision",
+          "note": "the boolean the ledger close asserts on before it will roll the period"
+        },
+        {
+          "locus": "$.body.status",
+          "use": "display",
+          "note": "shown on the collections dashboard next to the customer"
+        }
+      ]
+    }
+  ]
+}

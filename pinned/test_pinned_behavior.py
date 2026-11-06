@@ -2,7 +2,7 @@
 
 One test per entry in `pins/pins.jsonl`: each pins a behavior that version 2022-11-15 had and
 version 2025-03-31.basil does not, at a response field some declared customer workflow actually
-reads. 11 test(s): 9 equals, 1 non-empty, 1 status.
+reads. 19 test(s): 16 equals, 1 non-empty, 2 status.
 
 Run them against one version at a time. Live, against the API:
 
@@ -61,6 +61,105 @@ def test_checkout_card_payment_create_payment_intent__payment_method_types(canon
     """
     response = canonical("checkout_card_payment.create_payment_intent")
     assert value_at(response, "$.body.payment_method_types") == ['card']
+
+
+def test_checkout_session_no_cost_create_paid_session__payment_method_collection(canonical):
+    """$.body.payment_method_collection equals "always".
+
+    free_sample_fulfillment: corrupts. Rule `enum-value-changed`, axis `enum`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.payment_method_collection`
+    returned "if_required".
+    The client reads `$.body.payment_method_collection`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("checkout_session_no_cost.create_paid_session")
+    assert value_at(response, "$.body.payment_method_collection") == 'always'
+
+
+def test_checkout_session_no_cost_create_zero_total_session__status(canonical):
+    """checkout_session_no_cost.create_zero_total_session returns status 400 and not 200.
+
+    free_sample_fulfillment: unblocks. Rule `status-class-changed`, axis `status`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.status` returned 200.
+    The client reads `$`.
+    Assertion: the pinned behavior is the status class of the call.
+    """
+    response = canonical("checkout_session_no_cost.create_zero_total_session")
+    assert response["status"] == 400
+
+
+def test_checkout_session_no_cost_retrieve_paid_session__payment_method_collection(canonical):
+    """$.body.payment_method_collection equals "always".
+
+    free_sample_fulfillment: corrupts. Rule `enum-value-changed`, axis `enum`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.payment_method_collection`
+    returned "if_required".
+    The client reads `$.body.payment_method_collection`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("checkout_session_no_cost.retrieve_paid_session")
+    assert value_at(response, "$.body.payment_method_collection") == 'always'
+
+
+def test_invoice_out_of_band_payment_pay_invoice_out_of_band__amount_paid(canonical):
+    """$.body.amount_paid equals 0.
+
+    offline_invoice_settlement: corrupts. Rule `value-changed`, axis `value`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.amount_paid` returned 2000.
+    The client reads `$.body.amount_paid`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("invoice_out_of_band_payment.pay_invoice_out_of_band")
+    assert value_at(response, "$.body.amount_paid") == 0
+
+
+def test_invoice_out_of_band_payment_pay_invoice_out_of_band__paid_out_of_band(canonical):
+    """$.body.paid_out_of_band is present and equals true.
+
+    offline_invoice_settlement: corrupts. Rule `populated-field-removed`, axis `shape`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.paid_out_of_band` returned
+    <absent>.
+    The client reads `$.body.paid_out_of_band`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("invoice_out_of_band_payment.pay_invoice_out_of_band")
+    assert value_at(response, "$.body.paid_out_of_band") is True
+
+
+def test_invoice_out_of_band_payment_retrieve_invoice_after_payment__amount_paid(canonical):
+    """$.body.amount_paid equals 0.
+
+    offline_invoice_settlement: corrupts. Rule `value-changed`, axis `value`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.amount_paid` returned 2000.
+    The client reads `$.body.amount_paid`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("invoice_out_of_band_payment.retrieve_invoice_after_payment")
+    assert value_at(response, "$.body.amount_paid") == 0
+
+
+def test_invoice_out_of_band_payment_retrieve_invoice_after_payment__amount_remaining(canonical):
+    """$.body.amount_remaining equals 2000.
+
+    offline_invoice_settlement: corrupts. Rule `value-changed`, axis `value`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.amount_remaining` returned 0.
+    The client reads `$.body.amount_remaining`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("invoice_out_of_band_payment.retrieve_invoice_after_payment")
+    assert value_at(response, "$.body.amount_remaining") == 2000
+
+
+def test_invoice_out_of_band_payment_retrieve_invoice_after_payment__paid(canonical):
+    """$.body.paid is present and equals true.
+
+    offline_invoice_settlement: corrupts. Rule `populated-field-removed`, axis `shape`.
+    Pinned from 2022-11-15. On 2025-03-31.basil the read at `$.body.paid` returned <absent>.
+    The client reads `$.body.paid`.
+    Assertion: a value small enough to read, pinned exactly.
+    """
+    response = canonical("invoice_out_of_band_payment.retrieve_invoice_after_payment")
+    assert value_at(response, "$.body.paid") is True
 
 
 def test_partial_capture_reconcile_list_refunds_for_intent__count(canonical):

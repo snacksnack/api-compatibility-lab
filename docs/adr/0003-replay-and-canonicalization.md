@@ -85,8 +85,23 @@ control. It was caught by a unit test. The control is a necessary gate, not a
 sufficient one.
 
 Result: **A/A on 2022-11-15 and B/B on 2025-03-31.basil both report zero
-mismatches** across all 29 records, and the real A/B run yields differences on
-16 of 29 steps, including all four live-confirmed ground-truth breaks.
+mismatches** across all 38 records, and the real A/B run yields differences on
+24 of 38 steps, including all six live-confirmed ground-truth breaks the
+corpus reaches.
+
+**Amended by RC1-618.** The control had a second blind spot, and it was in the
+sentence above rather than in the method. `canonical_record` carries
+`duration_ms` through uncanonicalized for the differ's timing axis, and the
+control diffs canonical records directly — so a corpus carrying the field
+mismatches on every step, every run. It had never happened, because the
+committed corpus predated the field. The first capture that included it failed
+all 38 steps on timing alone. Fixed by `canonical.without_timing`, applied at
+the control's comparison and not at canonicalization, so the differ keeps the
+axis it reports as benign-forever (ADR 0004 D7).
+
+The generalizable part: "the differ handles timing on its own axis" was true
+of the differ and quietly false of the only other consumer of the same
+records. A guarantee that lives in one reader is not a property of the data.
 
 ## D7. Account-wide state outlives a run
 

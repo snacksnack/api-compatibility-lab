@@ -215,6 +215,24 @@ def canonical_record(record: dict, id_map: dict[str, str], origin: int) -> dict:
     return comparable
 
 
+def without_timing(record: dict) -> dict:
+    """A canonical record with the wall-clock duration removed.
+
+    The A/A control exists to measure infrastructure noise so a reader knows
+    what the A/B run's findings are worth, and a duration is pure
+    infrastructure noise: two runs of one version never agree on it. The
+    differ keeps the key — it has a timing axis, benign by rule (ADR 0004 D7)
+    — so it is dropped at the comparison rather than at canonicalization.
+
+    Found in RC1-618 when the first corpus carrying `duration_ms` was run
+    through the control: all 38 steps failed, every one on timing alone. The
+    control had been passing because the committed corpus predated the field,
+    which made "the differ handles timing on its own axis" quietly untrue of
+    the one consumer that does not use the differ.
+    """
+    return {key: value for key, value in record.items() if key != "duration_ms"}
+
+
 def canonical_side(records: list[dict]) -> dict[tuple[str, str], dict]:
     """Canonicalize a whole run, keyed by (workflow, step)."""
     id_map = build_id_map(records)

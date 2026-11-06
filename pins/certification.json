@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "certified_at": "2026-11-05T03:58:36+00:00",
+  "certified_at": "2026-11-05T19:01:13+00:00",
   "mode": "live",
   "version_a": "2022-11-15",
   "version_b": "2025-03-31.basil",
-  "suite_fingerprint": "19625b641916fb9d",
+  "suite_fingerprint": "4236a63ed23eef03",
   "pins": [
     {
       "pin": "checkout_card_payment.create_payment_intent $.body.automatic_payment_methods",
@@ -32,6 +32,78 @@
       "on_b": "broke",
       "detail_a": "",
       "detail_b": "AssertionError: assert ['card', 'kla... 'amazon_pay'] == ['card'] Left contains 4 more items, first extra item: 'klarna' Use -v to get more diff"
+    },
+    {
+      "pin": "checkout_session_no_cost.create_paid_session $.body.payment_method_collection",
+      "test": "test_checkout_session_no_cost_create_paid_session__payment_method_collection",
+      "fingerprint": "b607f499c327f5e6",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 'if_required' == 'always' - always + if_required"
+    },
+    {
+      "pin": "checkout_session_no_cost.create_zero_total_session $.status",
+      "test": "test_checkout_session_no_cost_create_zero_total_session__status",
+      "fingerprint": "9580233f949b0e7d",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "assert 200 == 400"
+    },
+    {
+      "pin": "checkout_session_no_cost.retrieve_paid_session $.body.payment_method_collection",
+      "test": "test_checkout_session_no_cost_retrieve_paid_session__payment_method_collection",
+      "fingerprint": "2b31ccf4dd81d383",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 'if_required' == 'always' - always + if_required"
+    },
+    {
+      "pin": "invoice_out_of_band_payment.pay_invoice_out_of_band $.body.amount_paid",
+      "test": "test_invoice_out_of_band_payment_pay_invoice_out_of_band__amount_paid",
+      "fingerprint": "9daa91e772557461",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 2000 == 0"
+    },
+    {
+      "pin": "invoice_out_of_band_payment.pay_invoice_out_of_band $.body.paid_out_of_band",
+      "test": "test_invoice_out_of_band_payment_pay_invoice_out_of_band__paid_out_of_band",
+      "fingerprint": "603a64dbf0e4c68c",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert <missing> is True"
+    },
+    {
+      "pin": "invoice_out_of_band_payment.retrieve_invoice_after_payment $.body.amount_paid",
+      "test": "test_invoice_out_of_band_payment_retrieve_invoice_after_payment__amount_paid",
+      "fingerprint": "a18248fb97b992c7",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 2000 == 0"
+    },
+    {
+      "pin": "invoice_out_of_band_payment.retrieve_invoice_after_payment $.body.amount_remaining",
+      "test": "test_invoice_out_of_band_payment_retrieve_invoice_after_payment__amount_remaining",
+      "fingerprint": "bb054a336e7ee3bc",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert 0 == 2000"
+    },
+    {
+      "pin": "invoice_out_of_band_payment.retrieve_invoice_after_payment $.body.paid",
+      "test": "test_invoice_out_of_band_payment_retrieve_invoice_after_payment__paid",
+      "fingerprint": "571e07260daf518c",
+      "on_a": "held",
+      "on_b": "broke",
+      "detail_a": "",
+      "detail_b": "AssertionError: assert <missing> is True"
     },
     {
       "pin": "partial_capture_reconcile.list_refunds_for_intent $.body.count",
