@@ -21,7 +21,7 @@ from compatlab import VERSION_A, VERSION_B, baseline, scoring
 from compatlab.canonical import canonical_side
 from compatlab.cli import _findings_from
 from compatlab.differ import diff_pairs, sides
-from compatlab.impact import BLOCKS, CORRUPTS, map_findings
+from compatlab.impact import BLOCKS, CORRUPTS, DEGRADES, map_findings
 from compatlab.pinning import load_pins
 from compatlab.verify import verify
 from compatlab.workflows import load_all, validate
@@ -70,6 +70,78 @@ WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven",
 
 def word(n: int) -> str:
     return WORDS[n] if n < len(WORDS) else str(n)
+
+
+def test_every_cell_of_the_results_table_matches_the_generated_figures():
+    """The summary table is hand-written, so every cell is pinned here.
+
+    It exists because the writeup opened with ninety lines of prose before
+    saying what happened, and a reader should be able to glean the result from
+    one table. That convenience is also a liability: a second copy of every
+    headline number, in the document most likely to be read and least likely
+    to be regenerated. So each row is reconstructed from the same artifacts
+    the prose below it quotes, and a drifted cell fails the suite.
+    """
+    scored = card()
+    ground, base = scored["ground_truth"], scored["baseline"]
+    findings, false_breaks = scored["findings"], scored["false_breaks"]
+    report, verification, declared = impact()
+    records = pairs()
+
+    exercised = [b for b in ground["breaks"] if b["exercised"]]
+    caught = [b for b in exercised if b["caught"]]
+    blind = [b for b in caught if b["baseline"] in ("green", "named")]
+    green = sum(1 for b in blind if b["baseline"] == "green")
+    named = sum(1 for b in blind if b["baseline"] == "named")
+    top_rule, top_count = max(base["rule_mix"].items(), key=lambda kv: kv[1])
+    endpoints = len({(r["method"], r["path_template"]) for r in records})
+    scenarios = len(list((ROOT / "scenarios").glob("*.json")))
+    precision = verification.precision
+
+    rows = {
+        "Behavioral breaks caught":
+            f"**{len(caught)} of {len(exercised)}** the corpus exercises "
+            f"({ground['m']} in the inventory)",
+        "Missed by the schema diff":
+            f"**{len(blind)} of {len(caught)}** — {green} with no entry at "
+            f"all, {named} naming the field but not the behavior",
+        "What the schema diff did say":
+            f"{thousands(base['entries_corpus_endpoints'])} breaking entries "
+            f"on the {endpoints} endpoints this traffic calls, "
+            f"{thousands(top_count)} of them one enum rule",
+        "False breaks":
+            f"**0 of {findings['by_severity']['breaking']}** breaking "
+            f"findings, every one adjudicated by hand against the changelog",
+        "Workflows affected":
+            f"**{len(report.affected)} of {len(declared)}** — "
+            f"{len(report.by_verdict(BLOCKS))} stops outright, "
+            f"{len(report.by_verdict(CORRUPTS))} keep running and go silently "
+            f"wrong, {len(report.by_verdict(DEGRADES))} degrades",
+        "Mapping precision":
+            f"**{precision:.0%}** — {len(verification.confirmed)} of "
+            f"{len(verification.checks)} claims re-derived from the replay "
+            f"record by a checker that cannot see the classifier",
+        "Regression tests left behind":
+            f"**{len(load_pins(ROOT / 'pins' / 'pins.jsonl'))} of "
+            f"{len(load_pins(ROOT / 'pins' / 'pins.jsonl'))}** pass on "
+            f"`{VERSION_A}` and fail on `{VERSION_B}`, certified live",
+        "Corpus replayed":
+            f"{len(records)} calls over {endpoints} endpoints, from "
+            f"{scenarios} capture scenarios",
+    }
+    text = doc()
+    for label, value in rows.items():
+        assert f"| **{label}** | {value} |" in text, label
+    # The rate itself, so a non-zero one cannot hide behind the wording above.
+    assert false_breaks["rate"] == 0
+    assert top_rule == "response-property-enum-value-added"
+
+
+def test_the_results_table_comes_before_the_working():
+    """Scannable means first, not merely present."""
+    text = doc()
+    assert text.index("## Results") < text.index("## Statement of work")
+    assert text.index("## Results") < text.index("## What the replay found")
 
 
 def test_the_corpus_shape_is_quoted_correctly():

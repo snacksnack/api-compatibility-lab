@@ -9,6 +9,24 @@ its fixture: eight declared integration workflows in
 `2022-11-15` and `2025-03-31.basil`. Every figure below traces to a committed
 artifact; nothing is an estimate.
 
+## Results
+
+| | |
+|---|---|
+| **Behavioral breaks caught** | **7 of 7** the corpus exercises (8 in the inventory) |
+| **Missed by the schema diff** | **6 of 7** — 5 with no entry at all, 1 naming the field but not the behavior |
+| **What the schema diff did say** | 18,901 breaking entries on the 29 endpoints this traffic calls, 17,204 of them one enum rule |
+| **False breaks** | **0 of 65** breaking findings, every one adjudicated by hand against the changelog |
+| **Workflows affected** | **7 of 8** — 1 stops outright, 5 keep running and go silently wrong, 1 degrades |
+| **Mapping precision** | **100%** — 25 of 25 claims re-derived from the replay record by a checker that cannot see the classifier |
+| **Regression tests left behind** | **21 of 21** pass on `2022-11-15` and fail on `2025-03-31.basil`, certified live |
+| **Corpus replayed** | 41 calls over 29 endpoints, from 7 capture scenarios |
+
+Every row traces to a committed artifact and is pinned by a test, so a figure
+that drifts fails the suite rather than aging quietly into a wrong claim. The
+sections below are the working: what the schema diff said, what the replay
+found, and what it means for this integration.
+
 The lab is not finished: the inventory of workflows is declared by the
 customer rather than discovered from their code, and every figure here
 describes one version pair of one API. What is finished is the argument, and
