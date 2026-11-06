@@ -26,6 +26,13 @@ packages = ["compatlab"]
 evals = [
     "agent-evals[sql] @ git+https://github.com/snacksnack/agent-evals@v0.6.3",
 ]
+# Only the Pages build needs a markdown renderer. It is a group rather than a
+# runtime dependency because nothing in `compatlab` reads markdown: the lab
+# writes its reports, and `publish` is the separate step that renders the
+# committed ones for the web (ADR 0008).
+site = [
+    "markdown-it-py>=3",
+]
 dev = [
     "pytest>=8",
     "pytest-cov>=5",
