@@ -32,6 +32,24 @@ what gets replayed is the *sanitized* corpus, carrying the surrogates, not the
 original values. A corpus that could not be replayed after redaction would
 make "installable against production traffic" a slogan. It replays.
 
+**Amended by RC1-618 Stage 3.** The decision stands, and it is now the reason
+one inventory entry stays unexercised, so it is worth naming what it costs.
+M5's observable (basil #4) needs a Checkout Session driven to a *failed*
+payment attempt on a hosted page. Capture could do that once; re-execution
+means `replay` would do it twice per run, once per version, and `pin certify`
+runs the pinned suite live on both versions on top of that. A browser in that
+path makes the A/A control non-deterministic, which is the one property this
+project refuses to trade, so M5 is recorded as confirmed-live and unexercised
+with the reason written down rather than captured.
+
+The probe also collapsed an option the RC1-618 Stage 3 handoff had ranked
+above driving a browser inside replay: declaring completion as an out-of-band
+step performed through a non-HTTP hook. The only out-of-band step such a hook
+could perform *is* driving a hosted page, so it buys containment — one
+declared step rather than the whole engine — and not determinism. Worth having
+if M5 is ever built; not a separate answer to the question. Record in
+docs/m5-probe.md.
+
 ## D3. Ids are normalized by provenance, with a shape fallback
 
 The id that `create_customer` returned becomes `<id:create_customer>` on both

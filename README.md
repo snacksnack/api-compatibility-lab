@@ -19,9 +19,11 @@ published as Datadog gauges behind a dashboard and three monitors, and the
 whole thing is papered as an engagement in
 [`docs/engagement.md`](docs/engagement.md). It is still not a finished tool:
 the corpus exercises six of the eight documented breaks in the inventory, and
-the two that remain each need something a bare test-mode sandbox cannot do
-(a completed hosted Checkout page, a Connect test account); the integration
-inventory is declared by the customer rather than discovered from their code.
+the two that remain are unexercised for two different reasons (M7 needs a
+Connect test account; M5 was probed and confirmed live, then left unexercised
+by decision, because replaying its observable would put a browser inside the
+A/A control); the integration inventory is declared by the customer rather
+than discovered from their code.
 
 > **Caught 6 of the 6 documented behavioral breaks the corpus exercises** (8
 > in the inventory). The schema-diff baseline gave no usable warning on five

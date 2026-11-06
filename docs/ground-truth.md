@@ -69,7 +69,7 @@ No exercisable behavioral entries.
 | 1 | Item-level billing periods; subscription-level periods removed *(title-only)* | Subscription | SCHEMA |
 | 2 | Invoicing objects gain `parent` provenance field *(title-only)* | Invoice | SCHEMA |
 | 3 | `shipping_details` moved to `collected_information.shipping_details` | Checkout Session | SCHEMA |
-| 4 | Checkout Sessions: subscriptions created only after completed payment; no invoice until `complete`; sessions editable after failed attempt. No schema change | Checkout Session, Subscription, Invoice | BEHAVIORAL |
+| 4 | Checkout Sessions: subscriptions created only after completed payment; no invoice until `complete`; sessions editable after failed attempt. No schema change. **Live-verified in RC1-618:** a session create is identical across the pair, and so is a SUCCESSFUL completion; the difference appears only after a FAILED payment attempt, where A leaves an `incomplete` subscription and an `open` invoice and basil leaves nothing | Checkout Session, Subscription, Invoice | BEHAVIORAL |
 | 5 | `amount_off` coupons with `duration: forever` rejected at creation and application (`percent_off` unaffected). Reversed upstream in 2026-01-28.clover; live API accepts again | Coupon | BEHAVIORAL (reversed) |
 | 6 | Singular `coupon`/`promotion_code` params removed for stackable `discounts` *(title-only)* | Billing | SCHEMA |
 | 7 | `GET /v1/invoices/upcoming` removed outright — 404 `invalid_request_error` pointing at `POST /v1/invoices/create_preview`. **Live-verified in RC1-607:** the subscription-context form 404s too, so the changelog's "previews across all subscriptions no longer possible" understates it | Invoice | BOTH |
@@ -100,12 +100,12 @@ spike (docs/spike-findings.md) live-verified entries where noted.
 | 2 | `capture_method` default `automatic_async` | 2024-04-10 | **confirmed live** |
 | 3 | Partial capture/cancel creates no Refund | basil | **confirmed live** |
 | 4 | `GET /v1/invoices/upcoming` removed outright (both call shapes 404) | basil | **confirmed live** |
-| 5 | Checkout Session create/complete semantics (observable: no invoice until `complete`) | basil | pending (full flow needs a completed session) |
+| 5 | Checkout Session defers subscription and invoice to completion (observables: `$.body.subscription`, `$.body.invoice`, read after a failed payment attempt) | basil | **confirmed live**, unexercised by decision (ADR 0003 D2) |
 | 6 | Checkout `payment_method_collection` defaults to `if_required` (observables: `$.body.payment_method_collection`, and `$.status` on a zero-total session) | 2023-08-16 | **confirmed live, exercised, caught** |
 | 7 | Statement descriptor auto-population | 2023-10-16 | pending (needs Connect test account) |
 | 8 | Invoice `amount_paid` reflects out-of-band payments (observables: `$.body.amount_paid`, `$.body.amount_remaining`) | basil | **confirmed live, exercised, caught** |
 
-**M = 8 (6 confirmed live, 6 exercised and caught, 2 pending exercise).**
+**M = 8 (7 confirmed live, 6 exercised and caught, 2 unexercised).**
 
 RC1-618 Stage 1 read the two title-only M entries' detail pages and probed
 them on both versions. Both survived and both narrowed, so M did not move:
@@ -117,11 +117,25 @@ retired, in docs/m6-m8-probe.md.
 
 The corpus was then widened to reach both: `scenarios/05-checkout-session-no-cost.json`
 and `scenarios/06-invoice-out-of-band-payment.json`, which took the exercised
-count from four to six and the corpus from 20 endpoint templates to 27. The
-two that remain each need something a bare test-mode sandbox cannot do — a
-completed hosted Checkout page (M5) and a Connect test account (M7) — so they
-stay reported as *unexercised*, and the test asserting a break with no
-declared workflow cannot be reported as caught still holds for them.
+count from four to six and the corpus from 20 endpoint templates to 27.
+
+**RC1-618 Stage 3 then read and probed M5**, and it survived and narrowed
+twice (docs/m5-probe.md). A `mode=subscription` session create is identical
+across the pair on every observable, and so is a session driven to a
+*successful* completion — both end with an active subscription and a paid
+invoice. The break appears only after a *failed* payment attempt: A leaves an
+`incomplete` subscription and an `open` invoice behind, basil leaves nothing,
+and both sessions still report `status: open` and `payment_status: unpaid`.
+
+The two unexercised entries are now unexercised for two different kinds of
+reason, and the distinction is worth keeping. M7 waits on a Connect test
+account, which somebody can enable. **M5 waits on a tradeoff this project has
+already refused**: its observable needs a hosted page driven with a declining
+card, and ADR 0003 D2 replays by re-execution, so a scenario reaching it would
+put a browser inside `replay` and `pin certify` and make the lab's own A/A
+control non-deterministic. Both stay reported as *unexercised*, and the test
+asserting a break with no declared workflow cannot be reported as caught still
+holds for them.
 
 **Phase 3 (RC1-608) scored this inventory mechanically.** All four
 live-confirmed breaks are caught by the differ; the four pending entries are

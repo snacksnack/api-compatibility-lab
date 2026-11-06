@@ -222,8 +222,12 @@ gates against.
   denominator. Widening the corpus to reach them is tracked as RC1-618, which
   took the exercised count from four to six and is the honest answer to "is
   6 of 6 a good score" — it is 6 of 6 of what this traffic can reach. The two
-  that remain both need something a bare sandbox cannot do: a completed
-  hosted Checkout page (M5) and a Connect test account (M7).
+  that remain are unexercised for two different kinds of reason. M7 needs a
+  Connect test account, which somebody can enable. M5 was read and probed in
+  Stage 3, confirmed live, and left unexercised by decision: its observable
+  needs a hosted Checkout page driven to a *failed* payment attempt, and
+  replaying that would put a browser inside the A/A control (ADR 0003 D2,
+  docs/m5-probe.md).
 - **The inventory is declared, not discovered.** The customer describes the
   calls they make and the fields they read. A read they forgot to declare is a
   break this report will not mention, and no amount of precision changes that.

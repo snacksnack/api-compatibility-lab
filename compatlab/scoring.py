@@ -142,14 +142,27 @@ GROUND_TRUTH: tuple[Break, ...] = (
     ),
     Break(
         id="M5",
-        summary="Checkout Session create/complete semantics",
+        summary="Checkout Session defers subscription and invoice to completion",
         version="2025-03-31.basil",
-        confirmed=False,
+        confirmed=True,
         workflows=(),
-        loci=(),
+        loci=("$.body.subscription", "$.body.invoice"),
         baseline_endpoint=("POST", "/v1/checkout/sessions"),
         baseline_field="subscription",
-        note="Needs a completed Checkout Session; no scenario reaches one.",
+        note=("Narrowed in RC1-618 Stage 3, and narrowed twice. The entry "
+              "reads as a happy-path change — `subscriptions created only "
+              "after completed payment` — but a session create is identical "
+              "across the pair on every observable, and so is a session "
+              "driven to a SUCCESSFUL completion: both end with an active "
+              "subscription and a paid invoice. The difference appears only "
+              "after a FAILED payment attempt, where A leaves an `incomplete` "
+              "subscription and an `open` invoice behind and basil leaves "
+              "nothing, while both sessions still report `status: open` and "
+              "`payment_status: unpaid`. Unexercised by decision, not by "
+              "blocker: the observable needs a hosted page driven with a "
+              "declining card, and ADR 0003 D2 replays by re-execution, so a "
+              "scenario reaching it would put a browser inside `replay` and "
+              "`pin certify`. See docs/m5-probe.md."),
     ),
     Break(
         id="M6",
